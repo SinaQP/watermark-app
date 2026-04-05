@@ -187,6 +187,7 @@ export function AppShell() {
   const [exportState, setExportState] = useState<ExportState>(defaultExportState);
   const [watermark, setWatermark] = useState<TextWatermarkState>(defaultTextWatermark);
   const [previewMode, setPreviewMode] = useState<"after" | "before">("after");
+  const [canvasViewScale, setCanvasViewScale] = useState(1);
   const [savedPresets, setSavedPresets] = useState<SavedWatermarkPreset[]>(() =>
     loadSavedPresets(),
   );
@@ -258,10 +259,14 @@ export function AppShell() {
     }
 
     const syncLogo = () => {
-      const stage = readStageBounds(image);
-      if (!stage) {
-        return;
-      }
+      const safeCanvasScale =
+        Number.isFinite(canvasViewScale) && canvasViewScale > 0 ? canvasViewScale : 1;
+      const stageRect = previewStageRef.current?.getBoundingClientRect();
+      const stage = {
+        width: stageRect && stageRect.width > 0 ? stageRect.width / safeCanvasScale : image.width,
+        height:
+          stageRect && stageRect.height > 0 ? stageRect.height / safeCanvasScale : image.height,
+      };
 
       const aspectRatio = resolveAspectRatio(logoImage);
 
@@ -291,7 +296,7 @@ export function AppShell() {
       window.cancelAnimationFrame(frameId);
       window.removeEventListener("resize", syncLogo);
     };
-  }, [image, logoImage, logoWatermark?.rotation, logoWatermark?.width]);
+  }, [canvasViewScale, image, logoImage, logoWatermark?.rotation, logoWatermark?.width]);
 
   useEffect(() => {
     if (!image) {
@@ -302,6 +307,12 @@ export function AppShell() {
       ...current,
       fileName: resolveDefaultExportName(image.file.name),
     }));
+  }, [image]);
+
+  useEffect(() => {
+    if (!image) {
+      setCanvasViewScale(1);
+    }
   }, [image]);
 
   useEffect(() => {
@@ -1211,10 +1222,14 @@ export function AppShell() {
     }
 
     const stageRect = previewStageRef.current?.getBoundingClientRect();
+    const safeCanvasScale =
+      Number.isFinite(canvasViewScale) && canvasViewScale > 0 ? canvasViewScale : 1;
 
     return {
-      width: stageRect && stageRect.width > 0 ? stageRect.width : sourceImage.width,
-      height: stageRect && stageRect.height > 0 ? stageRect.height : sourceImage.height,
+      width:
+        stageRect && stageRect.width > 0 ? stageRect.width / safeCanvasScale : sourceImage.width,
+      height:
+        stageRect && stageRect.height > 0 ? stageRect.height / safeCanvasScale : sourceImage.height,
     };
   }
 
@@ -1461,6 +1476,7 @@ export function AppShell() {
 
             <section className="panel-surface flex min-h-[48rem] min-w-0 flex-1 flex-col gap-6 p-5 sm:p-6">
               <WatermarkCanvas
+                activeWatermarkType={activeWatermarkType}
                 error={error}
                 fileInputId={imageInputId}
                 fileInputRef={fileInputRef}
@@ -1484,6 +1500,7 @@ export function AppShell() {
                 watermarkOverlayRef={watermarkOverlayRef}
                 onBeforePeekEnd={handleBeforePeekEnd}
                 onBeforePeekStart={handleBeforePeekStart}
+                onCanvasViewScaleChange={setCanvasViewScale}
                 onDeleteLogo={removeLogo}
                 onImportChange={handleInputChange}
                 onImportDragLeave={handleImportDragLeave}
@@ -1610,7 +1627,10 @@ export function AppShell() {
             className="panel-surface flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5"
             aria-live="polite"
           >
-            <StatusRailItem label="Zoom" value={image ? "Fit to canvas" : "No image"} />
+            <StatusRailItem
+              label="Zoom"
+              value={image ? `${Math.round(canvasViewScale * 100)}%` : "No image"}
+            />
             <StatusRailItem
               label="Image info"
               value={image ? `${image.width} x ${image.height}` : "No image loaded"}
