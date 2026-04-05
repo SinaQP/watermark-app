@@ -1,8 +1,11 @@
 import { useState, type ReactNode } from "react";
 
+import { ChevronDownIcon } from "@/components/ui/app-icons";
+
 type CollapsibleControlSectionProps = {
   title: string;
   description?: string;
+  icon?: ReactNode;
   defaultOpen?: boolean;
   className?: string;
   children: ReactNode;
@@ -11,6 +14,7 @@ type CollapsibleControlSectionProps = {
 export function CollapsibleControlSection({
   title,
   description,
+  icon,
   defaultOpen = true,
   className = "",
   children,
@@ -18,29 +22,39 @@ export function CollapsibleControlSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <section className={`border-outline/70 bg-panel/72 rounded-[1.2rem] border ${className}`}>
+    <section className={`tool-subtle rounded-xl border ${className}`}>
       <button
         type="button"
         aria-expanded={isOpen}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
         onClick={() => {
           setIsOpen((current) => !current);
         }}
       >
-        <span className="text-app-text text-sm font-semibold">{title}</span>
-        <span
-          aria-hidden="true"
-          className={`text-muted mt-1 text-xs transition-transform ${isOpen ? "rotate-180" : ""}`}
-        >
-          ▼
+        <span className="flex items-center gap-2">
+          {icon ? <span className="text-muted">{icon}</span> : null}
+          <span className="text-app-text text-sm font-semibold">{title}</span>
         </span>
+        <ChevronDownIcon
+          className={`text-muted h-4 w-4 transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
       </button>
       {description ? (
-        <div className="border-outline/60 border-t px-4 py-2">
-          <p className="text-muted text-xs leading-5">{description}</p>
+        <div className="px-3 pb-2">
+          <p className="text-muted text-[0.74rem] leading-5">{description}</p>
         </div>
       ) : null}
-      {isOpen ? <div className="border-outline/60 border-t px-4 py-4">{children}</div> : null}
+      <div
+        className={`grid transition-all duration-200 ${
+          isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-55"
+        }`}
+      >
+        <div className="overflow-hidden border-t border-white/8">
+          <div className="space-y-3 px-3 py-3">{children}</div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -48,17 +62,19 @@ export function CollapsibleControlSection({
 export function FormField({
   label,
   helper,
+  compact = false,
   children,
 }: {
   label: string;
   helper?: string;
+  compact?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={compact ? "space-y-1.5" : "space-y-2"}>
       <div className="space-y-1">
-        <p className="text-app-text text-sm font-semibold">{label}</p>
-        {helper ? <p className="text-muted text-xs leading-5">{helper}</p> : null}
+        <p className="text-app-text text-[0.8rem] font-semibold">{label}</p>
+        {helper ? <p className="text-muted text-[0.72rem] leading-5">{helper}</p> : null}
       </div>
       {children}
     </div>
@@ -93,12 +109,12 @@ export function SliderWithNumberField({
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <label htmlFor={id} className="text-app-text text-sm font-semibold">
+        <label htmlFor={id} className="text-app-text text-[0.8rem] font-semibold">
           {label}
         </label>
-        {helper ? <p className="text-muted text-xs leading-5">{helper}</p> : null}
+        {helper ? <p className="text-muted text-[0.72rem] leading-5">{helper}</p> : null}
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_4.8rem] items-center gap-2">
         <input
           id={id}
           type="range"
@@ -106,7 +122,7 @@ export function SliderWithNumberField({
           max={max}
           step={step}
           value={boundedValue}
-          className="accent-accent w-full"
+          className="accent-accent h-1.5 w-full"
           onChange={(event) => {
             onValueChange(Number(event.currentTarget.value));
           }}
@@ -119,7 +135,7 @@ export function SliderWithNumberField({
           step={step}
           value={boundedValue}
           aria-label="Numeric value"
-          className="border-outline/80 bg-app-bg text-app-text focus:border-accent rounded-xl border px-2 py-2 text-sm font-semibold transition outline-none"
+          className="tool-input text-right font-semibold"
           onChange={(event) => {
             const nextValue = Number(event.currentTarget.value);
             if (Number.isFinite(nextValue)) {
@@ -128,7 +144,9 @@ export function SliderWithNumberField({
           }}
         />
       </div>
-      <p className="text-muted text-xs font-semibold">{displayValue ?? String(boundedValue)}</p>
+      <p className="text-muted text-[0.72rem] font-semibold">
+        {displayValue ?? String(boundedValue)}
+      </p>
     </div>
   );
 }

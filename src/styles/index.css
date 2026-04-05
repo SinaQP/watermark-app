@@ -1,26 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", "IBM Plex Sans", sans-serif;
-  --bg: #f2f5f8;
-  --panel: rgba(255, 255, 255, 0.9);
-  --surface: rgba(246, 249, 252, 0.85);
-  --text: #121922;
-  --muted: #586579;
-  --accent: #1e7b60;
-  --outline: rgba(89, 102, 123, 0.23);
-  --focus: rgba(30, 123, 96, 0.5);
+  --font-sans:
+    "Aptos", "Segoe UI Variable Text", "IBM Plex Sans", "Segoe UI", "Helvetica Neue", sans-serif;
+  --bg: #ebeff4;
+  --panel: rgba(255, 255, 255, 0.86);
+  --surface: rgba(243, 247, 251, 0.9);
+  --text: #101723;
+  --muted: #5e6d81;
+  --accent: #1f8f72;
+  --outline: rgba(82, 96, 121, 0.22);
+  --focus: rgba(31, 143, 114, 0.56);
 }
 
 :root[data-theme="dark"] {
-  --bg: #0f141d;
-  --panel: rgba(21, 29, 40, 0.88);
-  --surface: rgba(29, 39, 54, 0.8);
-  --text: #ebf0fa;
-  --muted: #9ca9bc;
-  --accent: #64ccb0;
-  --outline: rgba(143, 161, 186, 0.26);
-  --focus: rgba(100, 204, 176, 0.5);
+  --bg: #0b1118;
+  --panel: rgba(16, 24, 35, 0.86);
+  --surface: rgba(25, 36, 51, 0.8);
+  --text: #e8eef8;
+  --muted: #93a4bc;
+  --accent: #69d1b4;
+  --outline: rgba(128, 149, 177, 0.25);
+  --focus: rgba(105, 209, 180, 0.54);
 }
 
 @theme inline {
@@ -39,27 +40,29 @@
     font-family: var(--font-sans);
     background: var(--bg);
     color: var(--text);
+    height: 100%;
   }
 
   body {
-    min-height: 100vh;
+    height: 100%;
+    overflow: hidden;
     background:
       radial-gradient(
-        circle at top left,
-        color-mix(in srgb, var(--accent) 18%, transparent),
-        transparent 28%
+        1200px 600px at -10% -12%,
+        color-mix(in srgb, var(--accent) 22%, transparent),
+        transparent 60%
       ),
-      radial-gradient(circle at 90% 12%, rgba(77, 95, 129, 0.16), transparent 24%),
+      radial-gradient(800px 420px at 120% -8%, rgba(69, 97, 146, 0.22), transparent 58%),
       linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--bg) 88%, #ffffff 12%));
     color: var(--text);
     transition:
-      background-color 200ms ease,
-      color 200ms ease;
+      background-color 160ms ease,
+      color 160ms ease;
   }
 
-  body,
   #root {
-    min-height: 100vh;
+    height: 100%;
+    overflow: hidden;
   }
 
   * {
@@ -76,7 +79,7 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--accent) 32%, transparent);
+    background: color-mix(in srgb, var(--accent) 34%, transparent);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -93,13 +96,22 @@
 
 @layer components {
   .panel-surface {
-    @apply border-outline/80 bg-panel/90 rounded-[1.5rem] border backdrop-blur-xl;
+    @apply border-outline/80 bg-panel/90 rounded-2xl border backdrop-blur-xl;
     box-shadow:
-      0 20px 50px -42px rgba(15, 23, 42, 0.75),
+      0 14px 40px -30px rgba(9, 14, 24, 0.78),
       inset 0 1px 0 rgba(255, 255, 255, 0.16);
   }
 
   .panel-label {
-    @apply text-muted text-[0.72rem] font-semibold tracking-[0.24em] uppercase;
+    @apply text-muted text-[0.64rem] font-semibold tracking-[0.24em] uppercase;
+  }
+
+  .tool-subtle {
+    @apply border-outline/70 bg-app-bg/62;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .tool-input {
+    @apply border-outline/80 bg-app-bg text-app-text focus:border-accent rounded-xl border px-3 py-2 text-sm transition outline-none;
   }
 }

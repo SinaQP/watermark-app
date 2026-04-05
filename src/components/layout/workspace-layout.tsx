@@ -16,15 +16,15 @@ export function WorkspaceLayout({
   statusBar,
 }: WorkspaceLayoutProps) {
   return (
-    <div className="min-h-screen px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      <div className="mx-auto flex max-w-[1780px] flex-col gap-5">
-        {topBar}
-        <div className="grid min-h-0 gap-5 xl:grid-cols-[17rem_minmax(0,1fr)_23rem]">
-          <aside className="min-w-0">{leftSidebar}</aside>
-          <main className="min-w-0">{centerStage}</main>
-          <aside className="min-w-0">{rightSidebar}</aside>
+    <div className="h-screen overflow-hidden p-3 sm:p-4">
+      <div className="mx-auto grid h-full max-w-[1960px] grid-rows-[3.6rem_minmax(0,1fr)_2.7rem] gap-3">
+        <div className="min-h-0">{topBar}</div>
+        <div className="grid min-h-0 gap-3 xl:grid-cols-[15rem_minmax(0,1fr)_22rem]">
+          <aside className="min-h-0 min-w-0 overflow-hidden">{leftSidebar}</aside>
+          <main className="min-h-0 min-w-0 overflow-hidden">{centerStage}</main>
+          <aside className="min-h-0 min-w-0 overflow-hidden">{rightSidebar}</aside>
         </div>
-        {statusBar}
+        <div className="min-h-0">{statusBar}</div>
       </div>
     </div>
   );

@@ -6,17 +6,29 @@ import {
   type ChangeEvent,
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 
 import {
   ExportSettingsPanel,
   type BatchQueueItemView,
 } from "@/components/export/export-settings-panel";
-import { CollapsibleControlSection } from "@/components/controls/control-field";
 import { Panel } from "@/components/layout/panel";
 import { SectionCard } from "@/components/layout/section-card";
 import { WorkspaceLayout } from "@/components/layout/workspace-layout";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import {
+  AppMarkIcon,
+  ExportIcon,
+  ImageFileIcon,
+  KeyboardIcon,
+  LogoMarkIcon,
+  PresetIcon,
+  RedoIcon,
+  TextToolIcon,
+  UndoIcon,
+} from "@/components/ui/app-icons";
+import { IconAction } from "@/components/ui/icon-action";
 import { WatermarkCanvas } from "@/components/watermark/watermark-canvas";
 import { WatermarkInspector } from "@/components/watermark/watermark-inspector";
 import type { LogoWatermarkState, TextWatermarkState } from "@/components/watermark/types";
@@ -197,6 +209,7 @@ export function AppShell() {
     "Save a preset to reuse the same text and logo settings.",
   );
   const [showOnboarding, setShowOnboarding] = useState(() => shouldShowOnboarding());
+  const [leftRailView, setLeftRailView] = useState<"files" | "presets" | "shortcuts">("files");
 
   useEffect(() => {
     if (!image) {
@@ -1248,54 +1261,66 @@ export function AppShell() {
 
       <WorkspaceLayout
         topBar={
-          <header className="panel-surface flex flex-col gap-5 px-5 py-5 sm:px-6 sm:py-6">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-2">
+          <header className="panel-surface flex h-full items-center justify-between gap-2 px-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="sr-only">Portfolio-ready watermark editor</h1>
+              <div className="border-outline/60 bg-accent/12 text-accent flex h-8 w-8 items-center justify-center rounded-lg border">
+                <AppMarkIcon className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
                 <p className="panel-label">Watermark app</p>
-                <h1 className="text-app-text text-3xl font-semibold tracking-tight sm:text-4xl">
-                  Portfolio-ready watermark editor
-                </h1>
-                <p className="text-muted max-w-3xl text-sm leading-6 sm:text-base">
-                  Desktop workspace for importing images, editing watermark overlays, and exporting
-                  final assets with consistent settings.
+                <p className="text-app-text truncate text-sm font-semibold tracking-wide">
+                  Watermark Editor
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2 xl:max-w-[44rem]">
-                <ActionButton
-                  label={image ? "Replace image" : "Choose image"}
-                  tone="primary"
-                  onClick={openFilePicker}
-                />
-                <ActionButton
-                  label={logoImage ? "Replace logo" : "Choose logo"}
-                  tone="secondary"
-                  onClick={openLogoPicker}
-                />
-                <ActionButton
-                  label={quickExportLabel}
-                  tone="secondary"
-                  disabled={!canQuickExport}
-                  onClick={() => {
-                    void handleExport();
-                  }}
-                />
-                <ActionButton label="Toggle compare" tone="secondary" onClick={togglePreviewMode} />
-                <ThemeToggle />
-              </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-live="polite">
-              <WorkspaceStatus
-                label="Session"
-                value={isWatermarkDragging ? "Dragging text" : sessionStatus}
-                tone={image ? "accent" : "default"}
-              />
-              <WorkspaceStatus label="Preview" value={previewStatus} />
-              <WorkspaceStatus
-                label="Selection"
-                value={activeWatermarkType === "logo" ? "Logo watermark" : "Text watermark"}
+
+            <div className="flex items-center gap-1.5">
+              <IconAction
+                label={image ? "Replace image" : "Choose image"}
+                icon={<ImageFileIcon className="h-4 w-4" />}
+                compact
                 tone="accent"
+                onClick={openFilePicker}
               />
-              <WorkspaceStatus label="Export" value={exportStatus} />
+              <IconAction
+                label={logoImage ? "Replace logo" : "Choose logo"}
+                icon={<LogoMarkIcon className="h-4 w-4" />}
+                compact
+                onClick={openLogoPicker}
+              />
+              <IconAction
+                label="Undo"
+                icon={<UndoIcon className="h-4 w-4" />}
+                compact
+                disabled
+                onClick={() => {}}
+              />
+              <IconAction
+                label="Redo"
+                icon={<RedoIcon className="h-4 w-4" />}
+                compact
+                disabled
+                onClick={() => {}}
+              />
+              <IconAction
+                label="Toggle compare"
+                icon={<TextToolIcon className="h-4 w-4" />}
+                compact
+                active={previewMode === "before"}
+                onClick={togglePreviewMode}
+              />
+              <IconAction
+                label={quickExportLabel}
+                icon={<ExportIcon className="h-4 w-4" />}
+                compact
+                disabled={!canQuickExport}
+                tone="accent"
+                onClick={() => {
+                  void handleExport();
+                }}
+              />
+              <ThemeToggle compact />
             </div>
           </header>
         }
@@ -1303,178 +1328,180 @@ export function AppShell() {
           <Panel
             eyebrow="Sidebar"
             title="Watermark session"
-            description="Import files, choose editing target, and apply presets before fine-tuning."
+            description="Core actions and quick navigation."
             className="h-full"
           >
-            <div className="space-y-3">
-              <CollapsibleControlSection
-                title="File / source"
-                description="Choose base image and optional logo before editing."
-                defaultOpen
-              >
-                <div className="space-y-3">
-                  <MetadataPair
-                    label="Base image"
-                    value={image ? image.file.name : "Not selected"}
-                  />
-                  <MetadataPair
-                    label="Logo image"
-                    value={logoImage ? logoImage.file.name : "Not selected"}
-                  />
-                  <div className="grid gap-2">
-                    <ActionButton
-                      label={image ? "Replace base image" : "Import base image"}
-                      tone="primary"
-                      onClick={openFilePicker}
-                    />
-                    <ActionButton
-                      label={logoImage ? "Replace logo watermark" : "Import logo watermark"}
-                      tone="secondary"
-                      onClick={openLogoPicker}
-                    />
-                  </div>
-                </div>
-              </CollapsibleControlSection>
+            <div className="space-y-2">
+              <div className="tool-subtle grid grid-cols-3 gap-1 rounded-lg border p-1">
+                <RailTabButton
+                  isActive={leftRailView === "files"}
+                  label="Files"
+                  icon={<ImageFileIcon className="h-4 w-4" />}
+                  onClick={() => {
+                    setLeftRailView("files");
+                  }}
+                />
+                <RailTabButton
+                  isActive={leftRailView === "presets"}
+                  label="Presets"
+                  icon={<PresetIcon className="h-4 w-4" />}
+                  onClick={() => {
+                    setLeftRailView("presets");
+                  }}
+                />
+                <RailTabButton
+                  isActive={leftRailView === "shortcuts"}
+                  label="Shortcuts"
+                  icon={<KeyboardIcon className="h-4 w-4" />}
+                  onClick={() => {
+                    setLeftRailView("shortcuts");
+                  }}
+                />
+              </div>
 
-              <CollapsibleControlSection
-                title="Watermark type"
-                description="Select what you want to edit in the right panel."
-                defaultOpen
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  <ModeButton
-                    isActive={activeWatermarkType === "text"}
-                    label="Text"
-                    onClick={() => {
-                      setActiveWatermarkType("text");
-                    }}
-                  />
-                  <ModeButton
-                    isActive={activeWatermarkType === "logo"}
-                    label="Logo"
-                    onClick={() => {
-                      setActiveWatermarkType("logo");
-                      if (!logoImage) {
-                        openLogoPicker();
-                      }
-                    }}
-                  />
-                </div>
-              </CollapsibleControlSection>
+              {leftRailView === "files" ? (
+                <div className="space-y-2">
+                  <SectionCard title="Source files">
+                    <MetadataPair
+                      label="Base image"
+                      value={image ? image.file.name : "Not selected"}
+                    />
+                    <MetadataPair
+                      label="Logo image"
+                      value={logoImage ? logoImage.file.name : "Not selected"}
+                    />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <IconAction
+                        label={image ? "Replace image" : "Choose image"}
+                        icon={<ImageFileIcon className="h-4 w-4" />}
+                        className="justify-center"
+                        onClick={openFilePicker}
+                      />
+                      <IconAction
+                        label={logoImage ? "Replace logo" : "Choose logo"}
+                        icon={<LogoMarkIcon className="h-4 w-4" />}
+                        className="justify-center"
+                        onClick={openLogoPicker}
+                      />
+                    </div>
+                  </SectionCard>
 
-              <CollapsibleControlSection
-                title="Presets"
-                description="Quickly load recent configurations."
-                defaultOpen
-              >
-                <div className="space-y-3">
-                  <MetadataPair label="Saved presets" value={`${savedPresets.length}`} />
+                  <SectionCard title="Watermark type">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <ModeButton
+                        isActive={activeWatermarkType === "text"}
+                        label="Text"
+                        icon={<TextToolIcon className="h-4 w-4" />}
+                        onClick={() => {
+                          setActiveWatermarkType("text");
+                        }}
+                      />
+                      <ModeButton
+                        isActive={activeWatermarkType === "logo"}
+                        label="Logo"
+                        icon={<LogoMarkIcon className="h-4 w-4" />}
+                        onClick={() => {
+                          setActiveWatermarkType("logo");
+                          if (!logoImage) {
+                            openLogoPicker();
+                          }
+                        }}
+                      />
+                    </div>
+                  </SectionCard>
+                </div>
+              ) : null}
+
+              {leftRailView === "presets" ? (
+                <SectionCard title="Recent presets">
+                  <MetadataPair label="Saved" value={`${savedPresets.length}`} />
                   <MetadataPair
-                    label="Active preset"
+                    label="Active"
                     value={
                       activePresetId
-                        ? `Active - ${savedPresets.find((preset) => preset.id === activePresetId)?.name ?? "Unknown"}`
+                        ? (savedPresets.find((preset) => preset.id === activePresetId)?.name ??
+                          "Unknown")
                         : "None"
                     }
                   />
                   {recentPresets.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {recentPresets.map((preset) => (
                         <button
                           key={preset.id}
                           type="button"
-                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                            preset.id === activePresetId
-                              ? "border-accent/45 bg-accent/12"
-                              : "border-outline/70 bg-app-bg/70 hover:border-accent/45"
+                          className={`tool-subtle w-full rounded-lg border px-2.5 py-2 text-left transition ${
+                            preset.id === activePresetId ? "border-accent/50 bg-accent/12" : ""
                           }`}
                           onClick={() => {
                             loadSavedPreset(preset.id);
                           }}
                         >
-                          <p className="text-app-text text-sm font-semibold">
-                            Preset: {preset.name}
+                          <p className="text-app-text truncate text-xs font-semibold">
+                            {preset.name}
                           </p>
-                          <p className="text-muted mt-1 text-xs leading-5">Apply preset settings</p>
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-muted text-sm leading-6">
-                      No presets yet. Save one from watermark settings after adjustment.
-                    </p>
+                    <p className="text-muted text-xs">No presets yet.</p>
                   )}
-                </div>
-              </CollapsibleControlSection>
+                </SectionCard>
+              ) : null}
 
-              <CollapsibleControlSection
-                title="Session hints"
-                description="Advanced guidance and shortcut references."
-                defaultOpen={false}
-              >
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    {workflowNotes.map((note) => (
-                      <p
-                        key={note}
-                        className="border-outline/60 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6"
-                      >
-                        {note}
-                      </p>
-                    ))}
-                  </div>
-                  <div className="space-y-2">
+              {leftRailView === "shortcuts" ? (
+                <SectionCard title="Session hints">
+                  <div className="space-y-1.5">
                     {keyboardShortcutHints.map((item) => (
                       <p
                         key={item}
-                        className="border-outline/60 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6"
+                        className="tool-subtle rounded-lg border px-2.5 py-2 text-[0.72rem]"
                       >
                         {item}
                       </p>
                     ))}
                   </div>
-                  <div className="space-y-2">
-                    {acceptedFormats.map((item) => (
+                  <div className="space-y-1.5">
+                    {workflowNotes.slice(0, 2).map((item) => (
                       <p
                         key={item}
-                        className="border-outline/60 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6"
+                        className="tool-subtle rounded-lg border px-2.5 py-2 text-[0.72rem]"
                       >
                         {item}
                       </p>
                     ))}
                   </div>
-                </div>
-              </CollapsibleControlSection>
+                  <p className="tool-subtle rounded-lg border px-2.5 py-2 text-[0.72rem]">
+                    {acceptedFormats[0]}
+                  </p>
+                </SectionCard>
+              ) : null}
+
+              {showOnboarding ? (
+                <SectionCard title="First run" description="Fast start">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <IconAction
+                      label="Choose image"
+                      icon={<ImageFileIcon className="h-4 w-4" />}
+                      className="justify-center"
+                      tone="accent"
+                      onClick={openFilePicker}
+                    />
+                    <IconAction
+                      label="Dismiss guide"
+                      icon={<AppMarkIcon className="h-4 w-4" />}
+                      className="justify-center"
+                      onClick={dismissOnboarding}
+                    />
+                  </div>
+                </SectionCard>
+              ) : null}
             </div>
           </Panel>
         }
         centerStage={
-          <div className="flex h-full min-w-0 flex-col gap-5">
-            {showOnboarding ? (
-              <section className="panel-surface flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:py-6">
-                <div className="space-y-3">
-                  <p className="panel-label">First run guide</p>
-                  <div className="space-y-2">
-                    <p className="text-app-text text-lg font-semibold">Start in under one minute</p>
-                    <ol className="text-muted space-y-2 text-sm leading-6">
-                      <li>1. Import a base image with `Ctrl/Cmd + O`.</li>
-                      <li>2. Choose text or logo mode from the left sidebar.</li>
-                      <li>3. Use `B` for compare mode, then export when preview looks right.</li>
-                    </ol>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <ActionButton label="Choose image" tone="primary" onClick={openFilePicker} />
-                  <ActionButton
-                    label="Dismiss guide"
-                    tone="secondary"
-                    onClick={dismissOnboarding}
-                  />
-                </div>
-              </section>
-            ) : null}
-
-            <section className="panel-surface flex min-h-[48rem] min-w-0 flex-1 flex-col gap-6 p-5 sm:p-6">
+          <section className="panel-surface flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-3">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
               <WatermarkCanvas
                 activeWatermarkType={activeWatermarkType}
                 error={error}
@@ -1517,15 +1544,15 @@ export function AppShell() {
                 onWatermarkPointerMove={handleWatermarkPointerMove}
                 onWatermarkPointerUp={clearWatermarkDrag}
               />
-            </section>
-          </div>
+            </div>
+          </section>
         }
         rightSidebar={
-          <div className="flex h-full min-w-0 flex-col gap-5">
+          <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
             <Panel
               eyebrow="Inspector"
               title="Watermark settings"
-              description="Contextual controls stay at the top while full controls remain available below."
+              description="Compact editing controls."
             >
               <SectionCard
                 title={
@@ -1540,6 +1567,7 @@ export function AppShell() {
                   <ModeButton
                     isActive={activeWatermarkType === "text"}
                     label="Edit text"
+                    icon={<TextToolIcon className="h-4 w-4" />}
                     onClick={() => {
                       setActiveWatermarkType("text");
                     }}
@@ -1547,6 +1575,7 @@ export function AppShell() {
                   <ModeButton
                     isActive={activeWatermarkType === "logo"}
                     label="Edit logo"
+                    icon={<LogoMarkIcon className="h-4 w-4" />}
                     onClick={() => {
                       setActiveWatermarkType("logo");
                       if (!logoImage) {
@@ -1589,11 +1618,7 @@ export function AppShell() {
               />
             </Panel>
 
-            <Panel
-              eyebrow="Output"
-              title="Export settings"
-              description="Single export and batch queue stay available without interrupting your editing flow."
-            >
+            <Panel eyebrow="Output" title="Export settings" description="Single and batch output.">
               <ExportSettingsPanel
                 batchItems={batchQueue.map((item) => ({
                   error: item.error,
@@ -1624,7 +1649,7 @@ export function AppShell() {
         }
         statusBar={
           <footer
-            className="panel-surface flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5"
+            className="panel-surface flex h-full items-center gap-1.5 px-2.5"
             aria-live="polite"
           >
             <StatusRailItem
@@ -1632,16 +1657,16 @@ export function AppShell() {
               value={image ? `${Math.round(canvasViewScale * 100)}%` : "No image"}
             />
             <StatusRailItem
-              label="Image info"
+              label="Image"
               value={image ? `${image.width} x ${image.height}` : "No image loaded"}
             />
             <StatusRailItem
-              label="Export status"
+              label="Export"
               value={exportStatus}
               tone={exportState.status === "error" ? "default" : "accent"}
             />
             <StatusRailItem label="Queue" value={batchStatus} />
-            <StatusRailItem label="Hint" value={statusHint} className="xl:ml-auto" />
+            <StatusRailItem label="Preview" value={previewStatus} className="ml-auto" />
           </footer>
         }
       />
@@ -1768,27 +1793,59 @@ function MetadataPair({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ModeButton({
+function RailTabButton({
   isActive,
   label,
+  icon,
   onClick,
 }: {
   isActive: boolean;
   label: string;
+  icon: ReactNode;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       aria-pressed={isActive}
-      className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+      aria-label={label}
+      title={label}
+      className={`rounded-md px-2 py-2 transition ${
+        isActive ? "bg-accent/18 text-app-text" : "text-muted hover:bg-panel/70 hover:text-app-text"
+      }`}
+      onClick={onClick}
+    >
+      <span className="flex items-center justify-center">{icon}</span>
+    </button>
+  );
+}
+
+function ModeButton({
+  isActive,
+  label,
+  icon,
+  onClick,
+}: {
+  isActive: boolean;
+  label: string;
+  icon?: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={isActive}
+      className={`rounded-lg border px-2.5 py-2 text-xs font-semibold transition ${
         isActive
           ? "border-accent/45 bg-accent/12 text-app-text"
           : "border-outline/80 bg-app-bg text-muted hover:border-accent/35 hover:text-app-text"
       }`}
       onClick={onClick}
     >
-      {label}
+      <span className="flex items-center justify-center gap-1.5">
+        {icon ? <span>{icon}</span> : null}
+        <span>{label}</span>
+      </span>
     </button>
   );
 }
@@ -1806,62 +1863,14 @@ function StatusRailItem({
 }) {
   return (
     <div
-      className={`rounded-xl border px-3 py-2 ${className} ${
+      className={`rounded-lg border px-2.5 py-1.5 ${className} ${
         tone === "accent" ? "border-accent/45 bg-accent/12" : "border-outline/70 bg-panel/72"
       }`}
     >
-      <p className="text-muted text-[0.64rem] font-semibold tracking-[0.2em] uppercase">{label}</p>
-      <p className="text-app-text mt-1 text-sm leading-5 font-semibold break-all">{value}</p>
+      <p className="text-muted text-[0.56rem] font-semibold tracking-[0.2em] uppercase">{label}</p>
+      <p className="text-app-text mt-0.5 text-[0.72rem] leading-4 font-semibold break-all">
+        {value}
+      </p>
     </div>
-  );
-}
-
-function WorkspaceStatus({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  tone?: "accent" | "default";
-}) {
-  return (
-    <div
-      className={`rounded-[1rem] border px-3 py-3 ${
-        tone === "accent" ? "border-accent/45 bg-accent/12" : "border-outline/70 bg-panel/70"
-      }`}
-    >
-      <p className="text-muted text-[0.66rem] font-semibold tracking-[0.22em] uppercase">{label}</p>
-      <p className="text-app-text mt-2 text-sm leading-5 font-semibold break-all">{value}</p>
-    </div>
-  );
-}
-
-function ActionButton({
-  label,
-  disabled = false,
-  tone,
-  onClick,
-}: {
-  label: string;
-  disabled?: boolean;
-  tone: "primary" | "secondary";
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-        tone === "primary"
-          ? "bg-accent text-app-bg hover:brightness-110"
-          : disabled
-            ? "border-outline/70 bg-panel/70 text-muted border"
-            : "border-outline/80 bg-app-bg text-app-text hover:border-accent/50 hover:bg-surface border"
-      }`}
-      onClick={onClick}
-    >
-      {label}
-    </button>
   );
 }

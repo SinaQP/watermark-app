@@ -1,10 +1,11 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 
 import {
   CollapsibleControlSection,
   FormField,
   SliderWithNumberField,
 } from "@/components/controls/control-field";
+import { ExportIcon, ImageFileIcon } from "@/components/ui/app-icons";
 import type { ImportedImage } from "@/lib/image-import";
 import type { ExportFormat } from "@/lib/watermark-render";
 
@@ -43,19 +44,6 @@ type ExportSettingsPanelProps = {
   state: ExportPanelState;
 };
 
-const exportFormats = [
-  {
-    description: "Keeps transparency from PNG logos and transparent source images.",
-    id: "png",
-    label: "PNG",
-  },
-  {
-    description: "Flattens transparency onto white for lighter review exports.",
-    id: "jpg",
-    label: "JPG",
-  },
-] as const;
-
 export function ExportSettingsPanel({
   batchItems,
   batchMessage,
@@ -75,6 +63,7 @@ export function ExportSettingsPanel({
   quality,
   state,
 }: ExportSettingsPanelProps) {
+  const [activeTab, setActiveTab] = useState<"batch" | "single">("single");
   const isExporting = state.status === "saving";
   const canExport = Boolean(image) && !isExporting;
   const completedCount = batchItems.filter((item) => item.status === "success").length;
@@ -84,49 +73,82 @@ export function ExportSettingsPanel({
   const canRunBatch = batchItems.length > 0 && Boolean(batchOutputFolder) && !isBatchRunning;
 
   return (
-    <div className="space-y-3">
-      <CollapsibleControlSection
-        title="Export settings"
-        description="Set output file details and run single export."
-        defaultOpen
-      >
-        <div className="space-y-4">
-          <FormField label="File name" helper="This name is used before extension is added.">
+    <div className="space-y-2">
+      <div className="tool-subtle inline-flex rounded-lg border p-1">
+        <button
+          type="button"
+          aria-pressed={activeTab === "single"}
+          className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+            activeTab === "single" ? "bg-accent/16 text-app-text" : "text-muted hover:text-app-text"
+          }`}
+          onClick={() => {
+            setActiveTab("single");
+          }}
+        >
+          Single
+        </button>
+        <button
+          type="button"
+          aria-pressed={activeTab === "batch"}
+          className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+            activeTab === "batch" ? "bg-accent/16 text-app-text" : "text-muted hover:text-app-text"
+          }`}
+          onClick={() => {
+            setActiveTab("batch");
+          }}
+        >
+          Batch
+        </button>
+      </div>
+
+      <div className={activeTab === "single" ? "block" : "hidden"}>
+        <CollapsibleControlSection
+          title="Export settings"
+          description="Single image export."
+          icon={<ExportIcon className="h-4 w-4" />}
+          defaultOpen
+        >
+          <FormField label="File name" compact>
             <input
               type="text"
               value={fileName}
               aria-label="File name"
-              className="border-outline/80 bg-app-bg text-app-text focus:border-accent w-full rounded-xl border px-3 py-3 text-sm transition outline-none"
+              className="tool-input w-full"
               placeholder="watermarked-image"
               onChange={onFileNameChange}
             />
           </FormField>
 
-          <FormField
-            label="Format"
-            helper="Pick PNG for transparency, JPG for lighter review files."
-          >
-            <div className="grid grid-cols-2 gap-2">
-              {exportFormats.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={format === option.id}
-                  className={`rounded-xl border px-3 py-3 text-left transition ${
-                    format === option.id
-                      ? "border-accent bg-accent/12 text-app-text"
-                      : "border-outline/80 bg-app-bg text-muted hover:border-accent/40 hover:text-app-text"
-                  }`}
-                  onClick={() => {
-                    onFormatChange(option.id);
-                  }}
-                >
-                  <span className="block text-sm font-semibold">{option.label}</span>
-                  <span className="text-muted mt-1 block text-xs leading-5">
-                    {option.description}
-                  </span>
-                </button>
-              ))}
+          <FormField label="Format" compact>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                aria-pressed={format === "png"}
+                className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
+                  format === "png"
+                    ? "border-accent/55 bg-accent/14 text-app-text"
+                    : "tool-subtle text-muted hover:text-app-text"
+                }`}
+                onClick={() => {
+                  onFormatChange("png");
+                }}
+              >
+                PNG
+              </button>
+              <button
+                type="button"
+                aria-pressed={format === "jpg"}
+                className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
+                  format === "jpg"
+                    ? "border-accent/55 bg-accent/14 text-app-text"
+                    : "tool-subtle text-muted hover:text-app-text"
+                }`}
+                onClick={() => {
+                  onFormatChange("jpg");
+                }}
+              >
+                JPG
+              </button>
             </div>
           </FormField>
 
@@ -134,7 +156,6 @@ export function ExportSettingsPanel({
             <SliderWithNumberField
               id="export-quality"
               label="JPG quality"
-              helper="Higher quality preserves detail but increases file size."
               min={60}
               max={100}
               value={quality}
@@ -147,136 +168,118 @@ export function ExportSettingsPanel({
               }}
             />
           ) : (
-            <p className="border-outline/70 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6">
-              PNG keeps transparent pixels from source assets and logos.
+            <p className="tool-subtle rounded-lg border px-3 py-2 text-[0.72rem]">
+              PNG keeps transparent edges.
             </p>
           )}
 
           <div
             aria-live="polite"
-            className={`rounded-xl border px-3 py-3 ${
+            className={`rounded-lg border px-3 py-2 text-[0.72rem] ${
               state.status === "error"
-                ? "border-rose-400/45 bg-rose-500/10"
+                ? "text-app-text border-rose-400/45 bg-rose-500/10"
                 : state.status === "success"
-                  ? "border-outline/70 bg-panel/80"
-                  : "border-outline/70 bg-app-bg/70"
+                  ? "border-accent/45 bg-accent/10 text-app-text"
+                  : "tool-subtle"
             }`}
           >
-            <p className="text-app-text text-sm font-semibold">
+            <p className="font-semibold">
               {state.status === "saving"
-                ? "Export in progress"
+                ? "Exporting..."
                 : state.status === "success"
-                  ? "Last export saved"
+                  ? "Saved"
                   : state.status === "error"
                     ? "Export failed"
-                    : "Ready to export"}
+                    : "Ready"}
             </p>
-            <p
-              className={`mt-2 text-sm leading-6 ${state.status === "error" ? "text-app-text" : "text-muted"}`}
-            >
-              {state.error ?? state.message}
-            </p>
-            {state.lastSavedPath ? (
-              <p className="text-app-text mt-2 text-sm font-semibold break-all">
-                {state.lastSavedPath}
-              </p>
-            ) : null}
+            <p className="mt-1">{state.error ?? state.message}</p>
+            {state.lastSavedPath ? <p className="mt-1 break-all">{state.lastSavedPath}</p> : null}
           </div>
 
           {state.error ? (
             <div
               role="alert"
-              className="text-app-text rounded-xl border border-rose-400/45 bg-rose-500/10 px-3 py-3 text-sm leading-6"
+              className="rounded-lg border border-rose-400/45 bg-rose-500/10 px-3 py-2 text-[0.72rem]"
             >
               {state.error}
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2">
-            <MetaPill
-              label="Source size"
-              value={image ? `${image.width} x ${image.height}` : "No image"}
-            />
-            <MetaPill label="Format" value={format === "png" ? "PNG" : "JPG"} />
-          </div>
-
           <button
             type="button"
-            className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
+            className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold transition ${
               canExport
-                ? "bg-accent text-app-bg hover:brightness-110"
-                : "border-outline/80 bg-panel text-muted border"
+                ? "border-accent/55 bg-accent/14 text-app-text hover:bg-accent/18"
+                : "tool-subtle text-muted"
             }`}
             disabled={!canExport}
             onClick={onExport}
           >
             {isExporting ? "Exporting..." : "Export image"}
           </button>
-        </div>
-      </CollapsibleControlSection>
+        </CollapsibleControlSection>
+      </div>
 
-      <CollapsibleControlSection
-        title="Batch export settings"
-        description="Run the same watermark setup across multiple files."
-        defaultOpen
-      >
-        <div className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2">
+      <div className={activeTab === "batch" ? "block" : "hidden"}>
+        <CollapsibleControlSection
+          title="Batch export settings"
+          description="Queue and process multiple files."
+          icon={<ImageFileIcon className="h-4 w-4" />}
+          defaultOpen
+        >
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
-              className="bg-accent text-app-bg rounded-xl px-4 py-3 text-sm font-semibold transition hover:brightness-110"
+              className="border-accent/45 bg-accent/12 rounded-lg border px-2 py-2 text-xs font-semibold"
               onClick={onAddBatchFiles}
             >
               Add images
             </button>
             <button
               type="button"
-              className="border-outline/80 bg-app-bg text-app-text hover:border-accent/50 hover:bg-surface rounded-xl border px-4 py-3 text-sm font-semibold transition"
+              className="tool-subtle rounded-lg border px-2 py-2 text-xs font-semibold"
               onClick={onSelectBatchOutputFolder}
             >
               {batchOutputFolder ? "Change output folder" : "Choose output folder"}
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <MetaPill label="Queue" value={`${batchItems.length}`} />
-            <MetaPill label="Queued" value={`${queuedCount}`} />
-            <MetaPill label="Processing" value={`${runningCount}`} />
-            <MetaPill label="Done" value={`${completedCount}`} />
-            <MetaPill label="Failed" value={`${failedCount}`} />
+          <div className="grid grid-cols-4 gap-1.5 text-center">
+            <MiniStat label="All" value={String(batchItems.length)} />
+            <MiniStat label="Queued" value={String(queuedCount)} />
+            <MiniStat label="Run" value={String(runningCount)} />
+            <MiniStat label="Done" value={String(completedCount)} />
           </div>
 
-          <div className="border-outline/70 bg-app-bg/70 rounded-xl border px-3 py-3">
-            <p className="text-app-text text-sm font-semibold">Output folder</p>
-            <p className="text-muted mt-1 text-sm leading-6 break-all">
-              {batchOutputFolder ?? "Choose a folder before running batch export."}
-            </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <MiniStat label="Failed" value={String(failedCount)} />
+            <MiniStat label="Folder" value={batchOutputFolder ? "Ready" : "Missing"} />
           </div>
 
-          <div className="border-outline/70 bg-app-bg/70 rounded-xl border px-3 py-3">
-            <p className="text-app-text text-sm font-semibold">Batch status</p>
-            <p className="text-muted mt-1 text-sm leading-6">{batchMessage}</p>
+          <div className="tool-subtle rounded-lg border px-3 py-2 text-[0.72rem]">
+            <p className="font-semibold">Batch status</p>
+            <p className="mt-1">{batchMessage}</p>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
+              className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
                 canRunBatch
-                  ? "bg-accent text-app-bg hover:brightness-110"
-                  : "border-outline/80 bg-panel text-muted border"
+                  ? "border-accent/55 bg-accent/14 text-app-text hover:bg-accent/18"
+                  : "tool-subtle text-muted"
               }`}
               disabled={!canRunBatch}
               onClick={onRunBatchExport}
             >
-              {isBatchRunning ? "Processing batch..." : "Run batch export"}
+              {isBatchRunning ? "Processing..." : "Run batch export"}
             </button>
             <button
               type="button"
-              className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+              className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
                 isBatchRunning
-                  ? "border-outline/80 bg-panel text-muted"
-                  : "text-app-text border-rose-400/45 bg-rose-500/10 hover:border-rose-400 hover:bg-rose-500/15"
+                  ? "tool-subtle text-muted"
+                  : "text-app-text border-rose-400/45 bg-rose-500/10"
               }`}
               disabled={isBatchRunning || batchItems.length === 0}
               onClick={onClearBatchQueue}
@@ -286,49 +289,39 @@ export function ExportSettingsPanel({
           </div>
 
           {batchItems.length > 0 ? (
-            <details className="border-outline/70 bg-panel/65 rounded-xl border px-3 py-3" open>
-              <summary className="text-app-text cursor-pointer text-sm font-semibold">
-                Queue items
-              </summary>
-              <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-                {batchItems.map((item) => (
-                  <article
-                    key={item.id}
-                    className="border-outline/70 bg-app-bg/80 rounded-xl border px-3 py-3"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-app-text max-w-[16rem] text-sm font-semibold break-all">
-                        {item.fileName}
-                      </p>
-                      <StatusBadge status={item.status} />
-                    </div>
-                    {item.error ? (
-                      <p className="text-app-text mt-2 text-sm leading-6">{item.error}</p>
-                    ) : item.outputPath ? (
-                      <p className="text-muted mt-2 text-sm leading-6 break-all">
-                        {item.outputPath}
-                      </p>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            </details>
+            <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+              {batchItems.map((item) => (
+                <article key={item.id} className="tool-subtle rounded-lg border px-2.5 py-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-app-text truncate text-[0.72rem] font-semibold">
+                      {item.fileName}
+                    </p>
+                    <StatusBadge status={item.status} />
+                  </div>
+                  {item.error ? (
+                    <p className="mt-1 text-[0.68rem]">{item.error}</p>
+                  ) : item.outputPath ? (
+                    <p className="text-muted mt-1 truncate text-[0.68rem]">{item.outputPath}</p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
           ) : (
-            <p className="border-outline/70 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6">
-              Add multiple images to build a queue. The current watermark settings will be reused.
+            <p className="tool-subtle rounded-lg border px-3 py-2 text-[0.72rem]">
+              Queue is empty.
             </p>
           )}
-        </div>
-      </CollapsibleControlSection>
+        </CollapsibleControlSection>
+      </div>
     </div>
   );
 }
 
-function MetaPill({ label, value }: { label: string; value: string }) {
+function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-outline/70 bg-panel/80 rounded-xl border px-3 py-3">
-      <p className="text-muted text-[0.64rem] font-semibold tracking-[0.2em] uppercase">{label}</p>
-      <p className="text-app-text mt-1 text-sm leading-5 font-semibold">{value}</p>
+    <div className="tool-subtle rounded-lg border px-2 py-1.5 text-center">
+      <p className="text-muted text-[0.62rem] font-semibold uppercase">{label}</p>
+      <p className="text-app-text text-[0.72rem] font-semibold">{value}</p>
     </div>
   );
 }
@@ -338,20 +331,20 @@ function StatusBadge({ status }: { status: BatchQueueItemView["status"] }) {
     status === "queued"
       ? "Queued"
       : status === "processing"
-        ? "Processing"
+        ? "Run"
         : status === "success"
           ? "Done"
-          : "Failed";
+          : "Fail";
   const className =
     status === "success"
-      ? "border-accent/40 bg-accent/10 text-accent"
+      ? "border-accent/45 bg-accent/10 text-accent"
       : status === "failed"
         ? "border-rose-400/45 bg-rose-500/10 text-app-text"
-        : "border-outline/80 bg-panel text-muted";
+        : "tool-subtle text-muted";
 
   return (
     <span
-      className={`rounded-full border px-2 py-1 text-[0.66rem] font-semibold tracking-[0.16em] uppercase ${className}`}
+      className={`rounded-full border px-2 py-1 text-[0.6rem] font-semibold uppercase ${className}`}
     >
       {label}
     </span>

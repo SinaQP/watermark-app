@@ -16,14 +16,12 @@ export function SectionCard({
   children,
 }: SectionCardProps) {
   return (
-    <section
-      className={`border-outline/70 bg-panel/72 rounded-[1.25rem] border px-4 py-4 ${className}`}
-    >
+    <section className={`tool-subtle rounded-xl border px-3 py-3 ${className}`}>
       <header className="space-y-1">
-        <p className="text-app-text text-sm font-semibold">{title}</p>
-        {description ? <p className="text-muted text-xs leading-5">{description}</p> : null}
+        <p className="text-app-text text-[0.82rem] font-semibold">{title}</p>
+        {description ? <p className="text-muted text-[0.72rem] leading-5">{description}</p> : null}
       </header>
-      <div className={`mt-4 space-y-4 ${contentClassName}`}>{children}</div>
+      <div className={`mt-3 space-y-3 ${contentClassName}`}>{children}</div>
     </section>
   );
 }

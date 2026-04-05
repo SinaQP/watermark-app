@@ -1,6 +1,10 @@
 import { useTheme } from "@/app/providers/theme-provider";
 
-export function ThemeToggle() {
+type ThemeToggleProps = {
+  compact?: boolean;
+};
+
+export function ThemeToggle({ compact = false }: ThemeToggleProps) {
   const { theme, toggleTheme } = useTheme();
   const nextTheme = theme === "dark" ? "light" : "dark";
 
@@ -8,19 +12,28 @@ export function ThemeToggle() {
     <button
       type="button"
       aria-label={`Switch to ${nextTheme} theme`}
+      title={`Switch to ${nextTheme} theme`}
       onClick={toggleTheme}
-      className="border-outline/80 bg-panel text-app-text hover:border-accent/50 hover:bg-surface inline-flex items-center gap-3 rounded-full border px-3 py-2 text-sm font-medium shadow-[0_10px_30px_-20px_rgba(15,23,42,0.6)] transition"
+      className={`border-outline/80 bg-panel text-app-text hover:border-accent/50 hover:bg-surface inline-flex items-center gap-2 rounded-xl border text-sm font-medium shadow-[0_10px_30px_-20px_rgba(15,23,42,0.6)] transition ${
+        compact ? "px-2 py-1.5" : "px-3 py-2"
+      }`}
     >
-      <span className="bg-app-bg relative flex h-8 w-14 items-center rounded-full p-1">
+      <span
+        className={`bg-app-bg relative flex items-center rounded-full p-1 ${
+          compact ? "h-7 w-12" : "h-8 w-14"
+        }`}
+      >
         <span
-          className={`bg-accent absolute h-6 w-6 rounded-full shadow-[0_8px_20px_-10px_rgba(0,0,0,0.5)] transition-transform duration-200 ${
-            theme === "dark" ? "translate-x-0" : "translate-x-6"
-          }`}
+          className={`bg-accent absolute rounded-full shadow-[0_8px_20px_-10px_rgba(0,0,0,0.5)] transition-transform duration-200 ${
+            compact ? "h-5 w-5" : "h-6 w-6"
+          } ${theme === "dark" ? "translate-x-0" : compact ? "translate-x-5" : "translate-x-6"}`}
         />
-        <SunIcon className="text-app-bg z-10 h-4 w-4" />
-        <MoonIcon className="text-app-bg z-10 ml-auto h-4 w-4" />
+        <SunIcon className={`text-app-bg z-10 ${compact ? "h-3.5 w-3.5" : "h-4 w-4"}`} />
+        <MoonIcon className={`text-app-bg z-10 ml-auto ${compact ? "h-3.5 w-3.5" : "h-4 w-4"}`} />
       </span>
-      <span className="hidden sm:block">{theme === "dark" ? "Dark" : "Light"} mode</span>
+      {compact ? null : (
+        <span className="hidden sm:block">{theme === "dark" ? "Dark" : "Light"} mode</span>
+      )}
     </button>
   );
 }
