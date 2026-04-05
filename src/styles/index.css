@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "IBM Plex Sans", "Inter", sans-serif;
+  --bg: #efe5d6;
+  --panel: rgba(255, 250, 242, 0.88);
+  --surface: rgba(255, 255, 255, 0.72);
+  --text: #1f2937;
+  --muted: #5f6774;
+  --accent: #e3863b;
+  --outline: rgba(120, 122, 127, 0.24);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0d1622;
+  --panel: rgba(15, 27, 41, 0.86);
+  --surface: rgba(21, 37, 55, 0.78);
+  --text: #f4f7fb;
+  --muted: #a7b2c4;
+  --accent: #7fd0b3;
+  --outline: rgba(147, 167, 191, 0.18);
+}
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --color-app-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-app-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-outline: var(--outline);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top left, rgba(227, 134, 59, 0.18), transparent 26%),
+      radial-gradient(circle at right 18%, rgba(35, 77, 117, 0.18), transparent 24%),
+      linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--bg) 88%, #ffffff 12%));
+    color: var(--text);
+    transition:
+      background-color 200ms ease,
+      color 200ms ease;
+  }
+
+  body,
+  #root {
+    min-height: 100vh;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: rgba(227, 134, 59, 0.28);
+  }
+}
+
+@layer components {
+  .panel-surface {
+    @apply border-outline/80 bg-panel/90 rounded-[1.75rem] border backdrop-blur-xl;
+    box-shadow:
+      0 22px 60px -38px rgba(15, 23, 42, 0.72),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  .panel-label {
+    @apply text-muted text-[0.72rem] font-semibold tracking-[0.24em] uppercase;
+  }
+}
