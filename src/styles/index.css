@@ -1,24 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", "IBM Plex Sans", "Inter", sans-serif;
-  --bg: #efe5d6;
-  --panel: rgba(255, 250, 242, 0.88);
-  --surface: rgba(255, 255, 255, 0.72);
-  --text: #1f2937;
-  --muted: #5f6774;
-  --accent: #e3863b;
-  --outline: rgba(120, 122, 127, 0.24);
+  --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", "IBM Plex Sans", sans-serif;
+  --bg: #f2f5f8;
+  --panel: rgba(255, 255, 255, 0.9);
+  --surface: rgba(246, 249, 252, 0.85);
+  --text: #121922;
+  --muted: #586579;
+  --accent: #1e7b60;
+  --outline: rgba(89, 102, 123, 0.23);
+  --focus: rgba(30, 123, 96, 0.5);
 }
 
 :root[data-theme="dark"] {
-  --bg: #0d1622;
-  --panel: rgba(15, 27, 41, 0.86);
-  --surface: rgba(21, 37, 55, 0.78);
-  --text: #f4f7fb;
-  --muted: #a7b2c4;
-  --accent: #7fd0b3;
-  --outline: rgba(147, 167, 191, 0.18);
+  --bg: #0f141d;
+  --panel: rgba(21, 29, 40, 0.88);
+  --surface: rgba(29, 39, 54, 0.8);
+  --text: #ebf0fa;
+  --muted: #9ca9bc;
+  --accent: #64ccb0;
+  --outline: rgba(143, 161, 186, 0.26);
+  --focus: rgba(100, 204, 176, 0.5);
 }
 
 @theme inline {
@@ -42,8 +44,12 @@
   body {
     min-height: 100vh;
     background:
-      radial-gradient(circle at top left, rgba(227, 134, 59, 0.18), transparent 26%),
-      radial-gradient(circle at right 18%, rgba(35, 77, 117, 0.18), transparent 24%),
+      radial-gradient(
+        circle at top left,
+        color-mix(in srgb, var(--accent) 18%, transparent),
+        transparent 28%
+      ),
+      radial-gradient(circle at 90% 12%, rgba(77, 95, 129, 0.16), transparent 24%),
       linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--bg) 88%, #ffffff 12%));
     color: var(--text);
     transition:
@@ -64,17 +70,33 @@
     cursor: pointer;
   }
 
+  :where(button, [role="button"], input, select, textarea, a):focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
   ::selection {
-    background: rgba(227, 134, 59, 0.28);
+    background: color-mix(in srgb, var(--accent) 32%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
   .panel-surface {
-    @apply border-outline/80 bg-panel/90 rounded-[1.75rem] border backdrop-blur-xl;
+    @apply border-outline/80 bg-panel/90 rounded-[1.5rem] border backdrop-blur-xl;
     box-shadow:
-      0 22px 60px -38px rgba(15, 23, 42, 0.72),
-      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      0 20px 50px -42px rgba(15, 23, 42, 0.75),
+      inset 0 1px 0 rgba(255, 255, 255, 0.16);
   }
 
   .panel-label {

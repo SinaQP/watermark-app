@@ -36,7 +36,12 @@ type ExportWatermarkedImageOptions = {
   watermark: TextWatermarkState;
 };
 
-type SaveDialogModule = typeof import("@tauri-apps/plugin-dialog");
+type ExportWatermarkedImageToPathOptions = Omit<ExportWatermarkedImageOptions, "settings"> & {
+  outputPath: string;
+  settings: ExportSettings;
+};
+
+type DialogModule = typeof import("@tauri-apps/plugin-dialog");
 type TauriCoreModule = typeof import("@tauri-apps/api/core");
 
 export async function exportWatermarkedImage({
@@ -50,23 +55,40 @@ export async function exportWatermarkedImage({
 }: ExportWatermarkedImageOptions): Promise<ExportResult | null> {
   ensureDesktopRuntime();
 
-  const fileName = buildExportFileName(settings.fileName, settings.format);
-
   onProgress?.({
     message: "Choose a save location for the exported image.",
     step: "dialog",
   });
 
-  const saveDialog = await loadSaveDialogModule();
-  const selectedPath = await saveDialog.save({
-    defaultPath: fileName,
-    filters: [resolveDialogFilter(settings.format)],
-    title: "Export watermarked image",
-  });
+  const selectedPath = await pickExportOutputPath(settings.fileName, settings.format);
 
   if (!selectedPath) {
     return null;
   }
+
+  return exportWatermarkedImageToPath({
+    image,
+    logo,
+    logoWatermark,
+    onProgress,
+    outputPath: selectedPath,
+    previewStageSize,
+    settings,
+    watermark,
+  });
+}
+
+export async function exportWatermarkedImageToPath({
+  image,
+  logo,
+  logoWatermark,
+  onProgress,
+  outputPath,
+  previewStageSize,
+  settings,
+  watermark,
+}: ExportWatermarkedImageToPathOptions): Promise<ExportResult> {
+  ensureDesktopRuntime();
 
   onProgress?.({
     message: "Loading the preview assets for export.",
@@ -115,7 +137,7 @@ export async function exportWatermarkedImage({
   return invoke<ExportResult>("export_watermarked_image", {
     base64Data: bytesBase64,
     format: settings.format,
-    path: selectedPath,
+    path: outputPath,
   });
 }
 
@@ -123,6 +145,34 @@ export function buildExportFileName(fileName: string, format: ExportFormat) {
   const baseName = sanitizeFileNameSegment(stripKnownExtension(fileName)) || "watermarked-image";
 
   return `${baseName}.${resolveExportExtension(format)}`;
+}
+
+export function buildOutputPath(folderPath: string, fileName: string) {
+  const separator = folderPath.includes("\\") ? "\\" : "/";
+
+  if (folderPath.endsWith("/") || folderPath.endsWith("\\")) {
+    return `${folderPath}${fileName}`;
+  }
+
+  return `${folderPath}${separator}${fileName}`;
+}
+
+export async function pickExportFolder() {
+  ensureDesktopRuntime();
+
+  const dialog = await loadDialogModule();
+  const selected = await dialog.open({
+    defaultPath: undefined,
+    directory: true,
+    multiple: false,
+    title: "Choose output folder",
+  });
+
+  if (!selected) {
+    return null;
+  }
+
+  return Array.isArray(selected) ? (selected[0] ?? null) : selected;
 }
 
 function normalizeStageSize(
@@ -208,7 +258,18 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
-async function loadSaveDialogModule(): Promise<SaveDialogModule> {
+async function pickExportOutputPath(baseFileName: string, format: ExportFormat) {
+  const dialog = await loadDialogModule();
+  const selectedPath = await dialog.save({
+    defaultPath: buildExportFileName(baseFileName, format),
+    filters: [resolveDialogFilter(format)],
+    title: "Export watermarked image",
+  });
+
+  return selectedPath;
+}
+
+async function loadDialogModule(): Promise<DialogModule> {
   try {
     return await import("@tauri-apps/plugin-dialog");
   } catch {

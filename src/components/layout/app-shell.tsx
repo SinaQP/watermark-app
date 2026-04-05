@@ -8,24 +8,48 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { ExportSettingsPanel } from "@/components/export/export-settings-panel";
+import {
+  ExportSettingsPanel,
+  type BatchQueueItemView,
+} from "@/components/export/export-settings-panel";
+import { CollapsibleControlSection } from "@/components/controls/control-field";
 import { Panel } from "@/components/layout/panel";
+import { SectionCard } from "@/components/layout/section-card";
+import { WorkspaceLayout } from "@/components/layout/workspace-layout";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { WatermarkCanvas } from "@/components/watermark/watermark-canvas";
 import { WatermarkInspector } from "@/components/watermark/watermark-inspector";
 import type { LogoWatermarkState, TextWatermarkState } from "@/components/watermark/types";
-import { exportWatermarkedImage, type ExportSettings } from "@/lib/export";
-import { MULTIPLE_IMAGE_ERROR, createImportedImage, type ImportedImage } from "@/lib/image-import";
+import {
+  buildExportFileName,
+  buildOutputPath,
+  exportWatermarkedImage,
+  exportWatermarkedImageToPath,
+  pickExportFolder,
+  type ExportSettings,
+} from "@/lib/export";
+import {
+  ACCEPTED_IMAGE_INPUT,
+  MULTIPLE_IMAGE_ERROR,
+  createImportedImage,
+  validateImageFile,
+  type ImportedImage,
+} from "@/lib/image-import";
+import {
+  createPresetName,
+  loadSavedPresets,
+  savePresets,
+  type SavedWatermarkPreset,
+} from "@/lib/preset-storage";
 import {
   clampLogoWidthToPosition,
   clampWatermarkPosition,
   fitLogoWidthToStage,
-  formatWatermarkPosition,
-  getPresetLabel,
   getPresetPosition,
   getWatermarkBoundsForWidth,
   measureRotatedWatermarkBounds,
   type WatermarkBounds,
+  WATERMARK_PRESETS,
   type WatermarkPresetId,
 } from "@/lib/text-watermark";
 
@@ -70,6 +94,14 @@ type ExportState = {
   status: "error" | "idle" | "saving" | "success";
 };
 
+type BatchQueueItem = {
+  error: string | null;
+  file: File;
+  id: string;
+  outputPath: string | null;
+  status: BatchQueueItemView["status"];
+};
+
 const acceptedFormats = [
   "PNG preserves transparent edges for clean logo marks.",
   "JPG is practical for base photography and review shots.",
@@ -78,9 +110,9 @@ const acceptedFormats = [
 ];
 
 const workflowNotes = [
-  "Upload a base image, then add an optional logo watermark.",
-  "Tune text and logo opacity, rotation, and overall balance.",
-  "Drag text or logo overlays directly on the preview, then export the final result to PNG or JPG.",
+  "Upload a base image, then add text and an optional logo watermark.",
+  "Save presets after tuning opacity, rotation, and placement so new sessions start faster.",
+  "Use before/after preview mode to validate readability before single or batch export.",
 ];
 
 const defaultTextWatermark: TextWatermarkState = {
@@ -106,16 +138,36 @@ const defaultExportState: ExportState = {
   message: "Choose PNG or JPG, then save the rendered result to a local file.",
   status: "idle",
 };
+const defaultBatchMessage =
+  "Add images, choose an output folder, then run batch export with the current watermark config.";
+const ONBOARDING_STORAGE_KEY = "watermark-onboarding-complete";
+const PRESET_LIMIT_MESSAGE = "Preset limit reached. Delete one preset before saving another.";
+const keyboardShortcutHints = [
+  "Ctrl/Cmd + O: choose base image",
+  "Ctrl/Cmd + Shift + O: choose logo watermark",
+  "Ctrl/Cmd + E: export current image",
+  "1-7: apply text position presets",
+  "B: toggle before or after preview",
+];
 
 export function AppShell() {
   const imageInputId = useId();
   const logoInputId = useId();
+  const batchInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const batchInputRef = useRef<HTMLInputElement>(null);
   const previewStageRef = useRef<HTMLDivElement>(null);
   const watermarkOverlayRef = useRef<HTMLButtonElement>(null);
   const textDragStateRef = useRef<TextDragState | null>(null);
   const logoInteractionRef = useRef<LogoInteractionState | null>(null);
+  const previewModeBeforeHoldRef = useRef<"after" | "before" | null>(null);
+  const imageRef = useRef<ImportedImage | null>(null);
+  const openFilePickerShortcutRef = useRef<() => void>(() => {});
+  const openLogoPickerShortcutRef = useRef<() => void>(() => {});
+  const exportShortcutRef = useRef<() => void>(() => {});
+  const applyPresetShortcutRef = useRef<(presetId: WatermarkPresetId) => void>(() => {});
+  const togglePreviewShortcutRef = useRef<() => void>(() => {});
 
   const [image, setImage] = useState<ImportedImage | null>(null);
   const [logoImage, setLogoImage] = useState<ImportedImage | null>(null);
@@ -127,9 +179,23 @@ export function AppShell() {
   const [logoInteractionMode, setLogoInteractionMode] = useState<"idle" | "move" | "resize">(
     "idle",
   );
+  const [batchQueue, setBatchQueue] = useState<BatchQueueItem[]>([]);
+  const [batchOutputFolder, setBatchOutputFolder] = useState<string | null>(null);
+  const [batchMessage, setBatchMessage] = useState(defaultBatchMessage);
+  const [isBatchRunning, setIsBatchRunning] = useState(false);
   const [exportSettings, setExportSettings] = useState<ExportSettings>(defaultExportSettings);
   const [exportState, setExportState] = useState<ExportState>(defaultExportState);
   const [watermark, setWatermark] = useState<TextWatermarkState>(defaultTextWatermark);
+  const [previewMode, setPreviewMode] = useState<"after" | "before">("after");
+  const [savedPresets, setSavedPresets] = useState<SavedWatermarkPreset[]>(() =>
+    loadSavedPresets(),
+  );
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+  const [activeWatermarkType, setActiveWatermarkType] = useState<"logo" | "text">("text");
+  const [presetFeedback, setPresetFeedback] = useState(
+    "Save a preset to reuse the same text and logo settings.",
+  );
+  const [showOnboarding, setShowOnboarding] = useState(() => shouldShowOnboarding());
 
   useEffect(() => {
     if (!image) {
@@ -238,6 +304,20 @@ export function AppShell() {
     }));
   }, [image]);
 
+  useEffect(() => {
+    savePresets(savedPresets);
+  }, [savedPresets]);
+
+  useEffect(() => {
+    if (!activePresetId) {
+      return;
+    }
+
+    if (!savedPresets.some((preset) => preset.id === activePresetId)) {
+      setActivePresetId(null);
+    }
+  }, [activePresetId, savedPresets]);
+
   const sessionStatus = image
     ? "Preview ready"
     : isLoading
@@ -246,15 +326,6 @@ export function AppShell() {
         ? "Needs attention"
         : "Awaiting image";
 
-  const logoStatus = logoImage
-    ? logoInteractionMode === "resize"
-      ? "Resizing logo"
-      : logoInteractionMode === "move"
-        ? "Moving logo"
-        : "Logo ready"
-    : image
-      ? "Text only"
-      : "No logo";
   const exportStatus =
     exportState.status === "saving"
       ? "Exporting"
@@ -263,6 +334,94 @@ export function AppShell() {
         : exportState.status === "error"
           ? "Export error"
           : "Ready to export";
+  const batchStatus = isBatchRunning
+    ? "Batch running"
+    : batchQueue.length === 0
+      ? "Queue empty"
+      : `${batchQueue.length} queued`;
+  const previewStatus = previewMode === "before" ? "Before view" : "After view";
+  const suggestedPresetName = createPresetName(savedPresets);
+  const canQuickExport = Boolean(image) && exportState.status !== "saving";
+  const quickExportLabel = exportState.status === "saving" ? "Quick exporting..." : "Quick export";
+  const recentPresets = savedPresets.slice(0, 6);
+  const statusHint =
+    activeWatermarkType === "logo"
+      ? "Tip: drag the logo on canvas, then resize from corners."
+      : "Tip: drag text directly on the canvas to fine-tune placement.";
+
+  imageRef.current = image;
+  openFilePickerShortcutRef.current = openFilePicker;
+  openLogoPickerShortcutRef.current = openLogoPicker;
+  exportShortcutRef.current = () => {
+    if (imageRef.current) {
+      void handleExport();
+    }
+  };
+  applyPresetShortcutRef.current = applyPreset;
+  togglePreviewShortcutRef.current = togglePreviewMode;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const isPrimaryModifier = event.ctrlKey || event.metaKey;
+      const isEditable = isEditableTarget(event.target);
+
+      if (isPrimaryModifier && key === "o") {
+        event.preventDefault();
+
+        if (event.shiftKey) {
+          openLogoPickerShortcutRef.current();
+        } else {
+          openFilePickerShortcutRef.current();
+        }
+
+        return;
+      }
+
+      if (isPrimaryModifier && !event.shiftKey && key === "e") {
+        if (isEditable) {
+          return;
+        }
+
+        if (!imageRef.current) {
+          return;
+        }
+
+        event.preventDefault();
+        exportShortcutRef.current();
+
+        return;
+      }
+
+      if (isPrimaryModifier || event.altKey || isEditable) {
+        return;
+      }
+
+      if (key === "b") {
+        event.preventDefault();
+        togglePreviewShortcutRef.current();
+        return;
+      }
+
+      if (/^[1-7]$/.test(event.key)) {
+        const presetIndex = Number(event.key) - 1;
+        const preset = WATERMARK_PRESETS[presetIndex];
+
+        if (!preset) {
+          return;
+        }
+
+        event.preventDefault();
+        applyPresetShortcutRef.current(preset.id);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   async function importFiles(source: FileList | File[] | null, target: "base" | "logo") {
     const files = source ? Array.from(source) : [];
@@ -288,6 +447,7 @@ export function AppShell() {
       if (target === "base") {
         setImage(importedImage);
       } else {
+        setActiveWatermarkType("logo");
         const stage =
           readStageBounds(image) ??
           (image
@@ -339,6 +499,207 @@ export function AppShell() {
 
   function openLogoPicker() {
     logoInputRef.current?.click();
+  }
+
+  function openBatchFilePicker() {
+    batchInputRef.current?.click();
+  }
+
+  async function handleBatchFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    event.target.value = "";
+
+    await enqueueBatchFiles(files);
+  }
+
+  async function enqueueBatchFiles(source: FileList | File[] | null) {
+    const files = source ? Array.from(source) : [];
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const nextQueueItems = files.map((file, index) => {
+      const validationError = validateImageFile(file);
+
+      return {
+        error: validationError,
+        file,
+        id: createBatchQueueId(file, index),
+        outputPath: null,
+        status: validationError ? "failed" : "queued",
+      } satisfies BatchQueueItem;
+    });
+
+    setBatchQueue((current) => [...current, ...nextQueueItems]);
+
+    const validItems = nextQueueItems.filter((item) => item.status === "queued");
+    const invalidCount = nextQueueItems.length - validItems.length;
+    setBatchMessage(
+      invalidCount > 0
+        ? `Added ${validItems.length} files to queue. ${invalidCount} files were rejected.`
+        : `Added ${validItems.length} files to queue.`,
+    );
+
+    if (image || validItems.length === 0) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const firstImage = await createImportedImage(validItems[0].file);
+      setImage(firstImage);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Something went wrong while preparing the preview image.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleSelectBatchOutputFolder() {
+    try {
+      const folderPath = await pickExportFolder();
+
+      if (!folderPath) {
+        setBatchMessage("Output folder selection canceled.");
+        return;
+      }
+
+      setBatchOutputFolder(folderPath);
+      setBatchMessage("Output folder selected. You can now run batch export.");
+    } catch (caughtError) {
+      setBatchMessage(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Output folder selection failed. Try again.",
+      );
+    }
+  }
+
+  function clearBatchQueue() {
+    if (isBatchRunning) {
+      return;
+    }
+
+    setBatchQueue([]);
+    setBatchMessage(defaultBatchMessage);
+  }
+
+  async function handleRunBatchExport() {
+    if (isBatchRunning) {
+      return;
+    }
+
+    if (batchQueue.length === 0) {
+      setBatchMessage("Batch queue is empty. Add images before running export.");
+      return;
+    }
+
+    if (!batchOutputFolder) {
+      setBatchMessage("Choose an output folder before running batch export.");
+      return;
+    }
+
+    const targets = batchQueue.filter(
+      (item) => item.status === "queued" || item.status === "failed",
+    );
+
+    if (targets.length === 0) {
+      setBatchMessage("No pending files found. Clear queue or add more files.");
+      return;
+    }
+
+    setIsBatchRunning(true);
+    setBatchMessage(`Preparing batch export for ${targets.length} files.`);
+
+    let stageForBatch =
+      readStageBounds(image) ?? (image ? { width: image.width, height: image.height } : null);
+
+    if (!stageForBatch) {
+      try {
+        const fallbackImage = await createImportedImage(targets[0].file);
+        stageForBatch = { height: fallbackImage.height, width: fallbackImage.width };
+        URL.revokeObjectURL(fallbackImage.previewUrl);
+      } catch {
+        stageForBatch = { height: 1080, width: 1920 };
+      }
+    }
+
+    const usedOutputNames = new Set<string>();
+    let successCount = 0;
+    let failedCount = 0;
+
+    try {
+      for (const [index, item] of targets.entries()) {
+        setBatchQueue((current) =>
+          current.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, error: null, outputPath: null, status: "processing" }
+              : entry,
+          ),
+        );
+        setBatchMessage(`Processing ${index + 1}/${targets.length}: ${item.file.name}`);
+        await waitForUiFrame();
+
+        let importedImage: ImportedImage | null = null;
+
+        try {
+          importedImage = await createImportedImage(item.file);
+          const suggestedName = buildExportFileName(
+            resolveDefaultExportName(item.file.name),
+            exportSettings.format,
+          );
+          const outputFileName = ensureUniqueFileName(suggestedName, usedOutputNames);
+          const outputPath = buildOutputPath(batchOutputFolder, outputFileName);
+          const result = await exportWatermarkedImageToPath({
+            image: importedImage,
+            logo: logoImage,
+            logoWatermark,
+            outputPath,
+            previewStageSize: stageForBatch,
+            settings: {
+              ...exportSettings,
+              fileName: outputFileName,
+            },
+            watermark,
+          });
+
+          successCount += 1;
+          setBatchQueue((current) =>
+            current.map((entry) =>
+              entry.id === item.id
+                ? { ...entry, error: null, outputPath: result.path, status: "success" }
+                : entry,
+            ),
+          );
+        } catch (caughtError) {
+          failedCount += 1;
+          const message =
+            caughtError instanceof Error ? caughtError.message : "Export failed for this file.";
+          setBatchQueue((current) =>
+            current.map((entry) =>
+              entry.id === item.id
+                ? { ...entry, error: message, outputPath: null, status: "failed" }
+                : entry,
+            ),
+          );
+        } finally {
+          if (importedImage) {
+            URL.revokeObjectURL(importedImage.previewUrl);
+          }
+        }
+      }
+    } finally {
+      setIsBatchRunning(false);
+    }
+
+    setBatchMessage(`Batch completed. ${successCount} succeeded, ${failedCount} failed.`);
   }
 
   async function handleExport() {
@@ -480,10 +841,133 @@ export function AppShell() {
     }));
   }
 
+  function saveCurrentPreset(name: string) {
+    const cleanedName = name.trim();
+
+    if (!cleanedName) {
+      setPresetFeedback("Enter a preset name before saving.");
+      return;
+    }
+
+    if (savedPresets.length >= 30) {
+      setPresetFeedback(PRESET_LIMIT_MESSAGE);
+      return;
+    }
+
+    const timestamp = Date.now();
+    const newPreset: SavedWatermarkPreset = {
+      createdAt: timestamp,
+      id: createPresetId(),
+      logoWatermark: logoWatermark ? cloneLogoWatermark(logoWatermark) : null,
+      name: cleanedName,
+      updatedAt: timestamp,
+      watermark: cloneTextWatermark(watermark),
+    };
+
+    setSavedPresets((current) => [newPreset, ...current]);
+    setActivePresetId(newPreset.id);
+    setPresetFeedback(`Saved "${cleanedName}".`);
+  }
+
+  function loadSavedPreset(presetId: string) {
+    const preset = savedPresets.find((item) => item.id === presetId);
+
+    if (!preset) {
+      setPresetFeedback("Preset not found.");
+      return;
+    }
+
+    setWatermark(cloneTextWatermark(preset.watermark));
+    setLogoWatermark(preset.logoWatermark ? cloneLogoWatermark(preset.logoWatermark) : null);
+    setActiveWatermarkType(preset.logoWatermark ? "logo" : "text");
+    setPreviewMode("after");
+    setActivePresetId(preset.id);
+    setPresetFeedback(`Loaded "${preset.name}".`);
+  }
+
+  function renameSavedPreset(presetId: string, name: string) {
+    const cleanedName = name.trim();
+
+    if (!cleanedName) {
+      setPresetFeedback("Preset name cannot be empty.");
+      return;
+    }
+
+    let renamed = false;
+    setSavedPresets((current) =>
+      current.map((preset) => {
+        if (preset.id !== presetId) {
+          return preset;
+        }
+
+        renamed = true;
+
+        return {
+          ...preset,
+          name: cleanedName,
+          updatedAt: Date.now(),
+        };
+      }),
+    );
+
+    if (renamed) {
+      setPresetFeedback(`Renamed preset to "${cleanedName}".`);
+    }
+  }
+
+  function deleteSavedPreset(presetId: string) {
+    const removedPreset = savedPresets.find((preset) => preset.id === presetId);
+
+    setSavedPresets((current) => current.filter((preset) => preset.id !== presetId));
+
+    if (activePresetId === presetId) {
+      setActivePresetId(null);
+    }
+
+    setPresetFeedback(
+      removedPreset ? `Deleted "${removedPreset.name}".` : "Preset removed from the list.",
+    );
+  }
+
+  function togglePreviewMode() {
+    setPreviewMode((current) => (current === "after" ? "before" : "after"));
+  }
+
+  function setPreviewToBefore() {
+    setPreviewMode("before");
+  }
+
+  function setPreviewToAfter() {
+    setPreviewMode("after");
+  }
+
+  function handleBeforePeekStart() {
+    previewModeBeforeHoldRef.current = previewMode;
+    setPreviewMode("before");
+  }
+
+  function handleBeforePeekEnd() {
+    if (!previewModeBeforeHoldRef.current) {
+      return;
+    }
+
+    setPreviewMode(previewModeBeforeHoldRef.current);
+    previewModeBeforeHoldRef.current = null;
+  }
+
+  function dismissOnboarding() {
+    setShowOnboarding(false);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "done");
+    }
+  }
+
   function handleWatermarkPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
     if (!image) {
       return;
     }
+    setActiveWatermarkType("text");
 
     const stageRect = previewStageRef.current?.getBoundingClientRect();
     const overlayRect = watermarkOverlayRef.current?.getBoundingClientRect();
@@ -546,6 +1030,7 @@ export function AppShell() {
     if (!image || !logoWatermark) {
       return;
     }
+    setActiveWatermarkType("logo");
 
     const stageRect = previewStageRef.current?.getBoundingClientRect();
 
@@ -574,6 +1059,7 @@ export function AppShell() {
     if (!image || !logoImage || !logoWatermark) {
       return;
     }
+    setActiveWatermarkType("logo");
 
     const stageRect = previewStageRef.current?.getBoundingClientRect();
 
@@ -696,6 +1182,7 @@ export function AppShell() {
     setLogoInteractionMode("idle");
     setLogoImage(null);
     setLogoWatermark(null);
+    setActiveWatermarkType("text");
   }
 
   function readPreviewBounds() {
@@ -732,140 +1219,413 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      <div className="mx-auto flex max-w-[1700px] flex-col gap-5">
-        <header className="panel-surface flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-3">
-            <p className="panel-label">Milestone 5</p>
-            <div className="space-y-2">
-              <h1 className="text-app-text text-3xl font-semibold tracking-tight sm:text-4xl">
-                Image and text watermark editor
-              </h1>
-              <p className="text-muted max-w-3xl text-sm leading-6 sm:text-base">
-                Apply a transparent logo watermark or text watermark, then move, rotate, size, and
-                export the final composition locally.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusPill label={logoImage ? "Logo active" : "Single image"} tone="default" />
-            <StatusPill label={getPresetLabel(watermark.mode)} tone="default" />
-            <StatusPill
-              label={isWatermarkDragging ? "Dragging text" : sessionStatus}
-              tone={image ? "accent" : "default"}
-            />
-            <StatusPill label={logoStatus} tone={logoImage ? "accent" : "default"} />
-            <StatusPill
-              label={exportStatus}
-              tone={exportState.status === "error" ? "default" : "accent"}
-            />
-            <ThemeToggle />
-          </div>
-        </header>
+    <>
+      <input
+        id={batchInputId}
+        ref={batchInputRef}
+        type="file"
+        accept={ACCEPTED_IMAGE_INPUT}
+        multiple
+        className="sr-only"
+        aria-label="Choose batch image files"
+        onChange={handleBatchFileInputChange}
+      />
 
-        <div className="grid gap-5 xl:grid-cols-[18rem_minmax(0,1fr)_22rem]">
+      <WorkspaceLayout
+        topBar={
+          <header className="panel-surface flex flex-col gap-5 px-5 py-5 sm:px-6 sm:py-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="space-y-2">
+                <p className="panel-label">Watermark app</p>
+                <h1 className="text-app-text text-3xl font-semibold tracking-tight sm:text-4xl">
+                  Portfolio-ready watermark editor
+                </h1>
+                <p className="text-muted max-w-3xl text-sm leading-6 sm:text-base">
+                  Desktop workspace for importing images, editing watermark overlays, and exporting
+                  final assets with consistent settings.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2 xl:max-w-[44rem]">
+                <ActionButton
+                  label={image ? "Replace image" : "Choose image"}
+                  tone="primary"
+                  onClick={openFilePicker}
+                />
+                <ActionButton
+                  label={logoImage ? "Replace logo" : "Choose logo"}
+                  tone="secondary"
+                  onClick={openLogoPicker}
+                />
+                <ActionButton
+                  label={quickExportLabel}
+                  tone="secondary"
+                  disabled={!canQuickExport}
+                  onClick={() => {
+                    void handleExport();
+                  }}
+                />
+                <ActionButton label="Toggle compare" tone="secondary" onClick={togglePreviewMode} />
+                <ThemeToggle />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-live="polite">
+              <WorkspaceStatus
+                label="Session"
+                value={isWatermarkDragging ? "Dragging text" : sessionStatus}
+                tone={image ? "accent" : "default"}
+              />
+              <WorkspaceStatus label="Preview" value={previewStatus} />
+              <WorkspaceStatus
+                label="Selection"
+                value={activeWatermarkType === "logo" ? "Logo watermark" : "Text watermark"}
+                tone="accent"
+              />
+              <WorkspaceStatus label="Export" value={exportStatus} />
+            </div>
+          </header>
+        }
+        leftSidebar={
           <Panel
-            eyebrow="Session"
+            eyebrow="Sidebar"
             title="Watermark session"
-            description="Preview state, text presets, and logo placement stay visible while you work."
+            description="Import files, choose editing target, and apply presets before fine-tuning."
+            className="h-full"
           >
-            <div className="space-y-4">
-              <MetricCard label="Status" value={sessionStatus} />
-              <MetricCard label="Text preset" value={getPresetLabel(watermark.mode)} />
-              <MetricCard
-                label="Text position"
-                value={formatWatermarkPosition(watermark.position)}
-              />
-              <MetricCard label="Logo" value={logoImage ? logoImage.file.name : "No logo"} />
-              <MetricCard label="Export" value={exportStatus} />
-              <MetricCard
-                label="Resolution"
-                value={image ? `${image.width} x ${image.height}` : "No image"}
-              />
-              <InfoGroup title="Accepted formats" items={acceptedFormats} />
-              <InfoGroup title="Workflow" items={workflowNotes} />
+            <div className="space-y-3">
+              <CollapsibleControlSection
+                title="File / source"
+                description="Choose base image and optional logo before editing."
+                defaultOpen
+              >
+                <div className="space-y-3">
+                  <MetadataPair
+                    label="Base image"
+                    value={image ? image.file.name : "Not selected"}
+                  />
+                  <MetadataPair
+                    label="Logo image"
+                    value={logoImage ? logoImage.file.name : "Not selected"}
+                  />
+                  <div className="grid gap-2">
+                    <ActionButton
+                      label={image ? "Replace base image" : "Import base image"}
+                      tone="primary"
+                      onClick={openFilePicker}
+                    />
+                    <ActionButton
+                      label={logoImage ? "Replace logo watermark" : "Import logo watermark"}
+                      tone="secondary"
+                      onClick={openLogoPicker}
+                    />
+                  </div>
+                </div>
+              </CollapsibleControlSection>
+
+              <CollapsibleControlSection
+                title="Watermark type"
+                description="Select what you want to edit in the right panel."
+                defaultOpen
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <ModeButton
+                    isActive={activeWatermarkType === "text"}
+                    label="Text"
+                    onClick={() => {
+                      setActiveWatermarkType("text");
+                    }}
+                  />
+                  <ModeButton
+                    isActive={activeWatermarkType === "logo"}
+                    label="Logo"
+                    onClick={() => {
+                      setActiveWatermarkType("logo");
+                      if (!logoImage) {
+                        openLogoPicker();
+                      }
+                    }}
+                  />
+                </div>
+              </CollapsibleControlSection>
+
+              <CollapsibleControlSection
+                title="Presets"
+                description="Quickly load recent configurations."
+                defaultOpen
+              >
+                <div className="space-y-3">
+                  <MetadataPair label="Saved presets" value={`${savedPresets.length}`} />
+                  <MetadataPair
+                    label="Active preset"
+                    value={
+                      activePresetId
+                        ? `Active - ${savedPresets.find((preset) => preset.id === activePresetId)?.name ?? "Unknown"}`
+                        : "None"
+                    }
+                  />
+                  {recentPresets.length > 0 ? (
+                    <div className="space-y-2">
+                      {recentPresets.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                            preset.id === activePresetId
+                              ? "border-accent/45 bg-accent/12"
+                              : "border-outline/70 bg-app-bg/70 hover:border-accent/45"
+                          }`}
+                          onClick={() => {
+                            loadSavedPreset(preset.id);
+                          }}
+                        >
+                          <p className="text-app-text text-sm font-semibold">
+                            Preset: {preset.name}
+                          </p>
+                          <p className="text-muted mt-1 text-xs leading-5">Apply preset settings</p>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted text-sm leading-6">
+                      No presets yet. Save one from watermark settings after adjustment.
+                    </p>
+                  )}
+                </div>
+              </CollapsibleControlSection>
+
+              <CollapsibleControlSection
+                title="Session hints"
+                description="Advanced guidance and shortcut references."
+                defaultOpen={false}
+              >
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    {workflowNotes.map((note) => (
+                      <p
+                        key={note}
+                        className="border-outline/60 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6"
+                      >
+                        {note}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    {keyboardShortcutHints.map((item) => (
+                      <p
+                        key={item}
+                        className="border-outline/60 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6"
+                      >
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    {acceptedFormats.map((item) => (
+                      <p
+                        key={item}
+                        className="border-outline/60 bg-app-bg/70 text-muted rounded-xl border px-3 py-3 text-sm leading-6"
+                      >
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </CollapsibleControlSection>
             </div>
           </Panel>
+        }
+        centerStage={
+          <div className="flex h-full min-w-0 flex-col gap-5">
+            {showOnboarding ? (
+              <section className="panel-surface flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:py-6">
+                <div className="space-y-3">
+                  <p className="panel-label">First run guide</p>
+                  <div className="space-y-2">
+                    <p className="text-app-text text-lg font-semibold">Start in under one minute</p>
+                    <ol className="text-muted space-y-2 text-sm leading-6">
+                      <li>1. Import a base image with `Ctrl/Cmd + O`.</li>
+                      <li>2. Choose text or logo mode from the left sidebar.</li>
+                      <li>3. Use `B` for compare mode, then export when preview looks right.</li>
+                    </ol>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <ActionButton label="Choose image" tone="primary" onClick={openFilePicker} />
+                  <ActionButton
+                    label="Dismiss guide"
+                    tone="secondary"
+                    onClick={dismissOnboarding}
+                  />
+                </div>
+              </section>
+            ) : null}
 
-          <main className="panel-surface flex min-h-[42rem] flex-col gap-6 p-6">
-            <WatermarkCanvas
-              error={error}
-              fileInputId={imageInputId}
-              fileInputRef={fileInputRef}
-              image={image}
-              isImportDragActive={isImportDragActive}
-              isLoading={isLoading}
-              isLogoDragging={logoInteractionMode === "move"}
-              isLogoResizing={logoInteractionMode === "resize"}
-              isWatermarkDragging={isWatermarkDragging}
-              logo={logoImage}
-              logoFileInputId={logoInputId}
-              logoFileInputRef={logoInputRef}
-              logoWatermark={logoWatermark}
-              openFilePicker={openFilePicker}
-              openLogoPicker={openLogoPicker}
-              previewStageRef={previewStageRef}
-              selectedFileLabel={image ? image.file.name : "No file selected"}
-              sessionStatus={sessionStatus}
-              watermark={watermark}
-              watermarkOverlayRef={watermarkOverlayRef}
-              onDeleteLogo={removeLogo}
-              onImportChange={handleInputChange}
-              onImportDragLeave={handleImportDragLeave}
-              onImportDragOver={handleImportDragOver}
-              onImportDrop={handleImportDrop}
-              onLogoImportChange={handleLogoInputChange}
-              onLogoPointerDown={handleLogoPointerDown}
-              onLogoPointerMove={handleLogoPointerMove}
-              onLogoPointerUp={clearLogoInteraction}
-              onLogoResizePointerDown={handleLogoResizePointerDown}
-              onWatermarkPointerDown={handleWatermarkPointerDown}
-              onWatermarkPointerMove={handleWatermarkPointerMove}
-              onWatermarkPointerUp={clearWatermarkDrag}
-            />
-          </main>
-
-          <div className="flex flex-col gap-5">
+            <section className="panel-surface flex min-h-[48rem] min-w-0 flex-1 flex-col gap-6 p-5 sm:p-6">
+              <WatermarkCanvas
+                error={error}
+                fileInputId={imageInputId}
+                fileInputRef={fileInputRef}
+                image={image}
+                isImportDragActive={isImportDragActive}
+                isLoading={isLoading}
+                isLogoDragging={logoInteractionMode === "move"}
+                isLogoResizing={logoInteractionMode === "resize"}
+                isWatermarkDragging={isWatermarkDragging}
+                logo={logoImage}
+                logoFileInputId={logoInputId}
+                logoFileInputRef={logoInputRef}
+                logoWatermark={logoWatermark}
+                openFilePicker={openFilePicker}
+                openLogoPicker={openLogoPicker}
+                previewStageRef={previewStageRef}
+                previewMode={previewMode}
+                selectedFileLabel={image ? image.file.name : "No file selected"}
+                sessionStatus={sessionStatus}
+                watermark={watermark}
+                watermarkOverlayRef={watermarkOverlayRef}
+                onBeforePeekEnd={handleBeforePeekEnd}
+                onBeforePeekStart={handleBeforePeekStart}
+                onDeleteLogo={removeLogo}
+                onImportChange={handleInputChange}
+                onImportDragLeave={handleImportDragLeave}
+                onImportDragOver={handleImportDragOver}
+                onImportDrop={handleImportDrop}
+                onLogoImportChange={handleLogoInputChange}
+                onLogoPointerDown={handleLogoPointerDown}
+                onLogoPointerMove={handleLogoPointerMove}
+                onLogoPointerUp={clearLogoInteraction}
+                onLogoResizePointerDown={handleLogoResizePointerDown}
+                onPreviewAfter={setPreviewToAfter}
+                onPreviewBefore={setPreviewToBefore}
+                onWatermarkPointerDown={handleWatermarkPointerDown}
+                onWatermarkPointerMove={handleWatermarkPointerMove}
+                onWatermarkPointerUp={clearWatermarkDrag}
+              />
+            </section>
+          </div>
+        }
+        rightSidebar={
+          <div className="flex h-full min-w-0 flex-col gap-5">
             <Panel
-              eyebrow="Watermark"
+              eyebrow="Inspector"
               title="Watermark settings"
-              description="Text and logo controls update the preview live while transforms stay clamped to the current image bounds."
+              description="Contextual controls stay at the top while full controls remain available below."
             >
+              <SectionCard
+                title={
+                  activeWatermarkType === "logo"
+                    ? "Logo watermark selected"
+                    : "Text watermark selected"
+                }
+                description={statusHint}
+                className={activeWatermarkType === "logo" ? "border-accent/40" : "border-accent/30"}
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <ModeButton
+                    isActive={activeWatermarkType === "text"}
+                    label="Edit text"
+                    onClick={() => {
+                      setActiveWatermarkType("text");
+                    }}
+                  />
+                  <ModeButton
+                    isActive={activeWatermarkType === "logo"}
+                    label="Edit logo"
+                    onClick={() => {
+                      setActiveWatermarkType("logo");
+                      if (!logoImage) {
+                        openLogoPicker();
+                      }
+                    }}
+                  />
+                </div>
+                <MetadataPair
+                  label="Current overlay"
+                  value={
+                    activeWatermarkType === "logo"
+                      ? logoImage
+                        ? logoImage.file.name
+                        : "No logo selected"
+                      : watermark.text || "No watermark text"
+                  }
+                />
+              </SectionCard>
+
               <WatermarkInspector
+                activePresetId={activePresetId}
                 image={image}
                 logo={logoImage}
                 logoWatermark={logoWatermark}
                 openFilePicker={openFilePicker}
                 openLogoPicker={openLogoPicker}
+                presetFeedback={presetFeedback}
+                savedPresets={savedPresets}
+                suggestedPresetName={suggestedPresetName}
                 watermark={watermark}
                 onApplyPreset={applyPreset}
                 onDeleteLogo={removeLogo}
+                onDeleteSavedPreset={deleteSavedPreset}
+                onLoadSavedPreset={loadSavedPreset}
                 onLogoWatermarkChange={setLogoWatermark}
+                onRenameSavedPreset={renameSavedPreset}
+                onSavePreset={saveCurrentPreset}
                 onWatermarkChange={setWatermark}
               />
             </Panel>
 
             <Panel
-              eyebrow="Export"
+              eyebrow="Output"
               title="Export settings"
-              description="Choose the output format, confirm the file name, and export the current preview to a desktop save location."
+              description="Single export and batch queue stay available without interrupting your editing flow."
             >
               <ExportSettingsPanel
+                batchItems={batchQueue.map((item) => ({
+                  error: item.error,
+                  fileName: item.file.name,
+                  id: item.id,
+                  outputPath: item.outputPath,
+                  status: item.status,
+                }))}
+                batchMessage={batchMessage}
+                batchOutputFolder={batchOutputFolder}
                 fileName={exportSettings.fileName}
                 format={exportSettings.format}
                 image={image}
+                isBatchRunning={isBatchRunning}
+                onAddBatchFiles={openBatchFilePicker}
+                onClearBatchQueue={clearBatchQueue}
                 quality={exportSettings.quality}
                 state={exportState}
                 onExport={handleExport}
                 onFileNameChange={handleExportFileNameChange}
                 onFormatChange={handleExportFormatChange}
                 onQualityChange={handleExportQualityChange}
+                onRunBatchExport={handleRunBatchExport}
+                onSelectBatchOutputFolder={handleSelectBatchOutputFolder}
               />
             </Panel>
           </div>
-        </div>
-      </div>
-    </div>
+        }
+        statusBar={
+          <footer
+            className="panel-surface flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5"
+            aria-live="polite"
+          >
+            <StatusRailItem label="Zoom" value={image ? "Fit to canvas" : "No image"} />
+            <StatusRailItem
+              label="Image info"
+              value={image ? `${image.width} x ${image.height}` : "No image loaded"}
+            />
+            <StatusRailItem
+              label="Export status"
+              value={exportStatus}
+              tone={exportState.status === "error" ? "default" : "accent"}
+            />
+            <StatusRailItem label="Queue" value={batchStatus} />
+            <StatusRailItem label="Hint" value={statusHint} className="xl:ml-auto" />
+          </footer>
+        }
+      />
+    </>
   );
 }
 
@@ -905,43 +1665,183 @@ function resolveDefaultExportName(fileName: string) {
   return stem ? `${stem}-watermarked` : defaultExportSettings.fileName;
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function createBatchQueueId(file: File, index: number) {
+  return `${file.name}-${file.lastModified}-${file.size}-${index}-${Date.now()}`;
+}
+
+function ensureUniqueFileName(fileName: string, usedNames: Set<string>) {
+  if (!usedNames.has(fileName)) {
+    usedNames.add(fileName);
+    return fileName;
+  }
+
+  const extensionIndex = fileName.lastIndexOf(".");
+  const stem = extensionIndex >= 0 ? fileName.slice(0, extensionIndex) : fileName;
+  const extension = extensionIndex >= 0 ? fileName.slice(extensionIndex) : "";
+  let counter = 2;
+  let candidate = `${stem}-${counter}${extension}`;
+
+  while (usedNames.has(candidate)) {
+    counter += 1;
+    candidate = `${stem}-${counter}${extension}`;
+  }
+
+  usedNames.add(candidate);
+  return candidate;
+}
+
+function waitForUiFrame() {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(() => resolve(), 0);
+  });
+}
+
+function shouldShowOnboarding() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.localStorage.getItem(ONBOARDING_STORAGE_KEY) !== "done";
+}
+
+function createPresetId() {
+  if (typeof window !== "undefined" && "crypto" in window && "randomUUID" in window.crypto) {
+    return window.crypto.randomUUID();
+  }
+
+  return `preset-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+}
+
+function cloneTextWatermark(watermark: TextWatermarkState): TextWatermarkState {
+  return {
+    ...watermark,
+    position: { ...watermark.position },
+  };
+}
+
+function cloneLogoWatermark(logoWatermark: LogoWatermarkState): LogoWatermarkState {
+  return {
+    ...logoWatermark,
+    position: { ...logoWatermark.position },
+  };
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  const tag = target.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select";
+}
+
+function MetadataPair({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-panel/80 rounded-2xl px-4 py-3">
-      <p className="text-muted text-xs tracking-[0.2em] uppercase">{label}</p>
-      <p className="text-app-text mt-2 text-base font-semibold tracking-tight">{value}</p>
+    <div className="border-outline/70 bg-app-bg/70 rounded-xl border px-3 py-2">
+      <p className="text-muted text-[0.64rem] font-semibold tracking-[0.2em] uppercase">{label}</p>
+      <p className="text-app-text mt-1 text-sm leading-6 font-semibold break-all">{value}</p>
     </div>
   );
 }
 
-function InfoGroup({ title, items }: { title: string; items: string[] }) {
+function ModeButton({
+  isActive,
+  label,
+  onClick,
+}: {
+  isActive: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <section className="border-outline/70 bg-panel/70 rounded-[1.25rem] border p-4">
-      <p className="text-app-text text-sm font-semibold">{title}</p>
-      <ul className="mt-4 space-y-3">
-        {items.map((item) => (
-          <li
-            key={item}
-            className="bg-app-bg/70 text-muted rounded-2xl px-3 py-3 text-sm leading-6"
-          >
-            {item}
-          </li>
-        ))}
-      </ul>
-    </section>
+    <button
+      type="button"
+      aria-pressed={isActive}
+      className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+        isActive
+          ? "border-accent/45 bg-accent/12 text-app-text"
+          : "border-outline/80 bg-app-bg text-muted hover:border-accent/35 hover:text-app-text"
+      }`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 
-function StatusPill({ label, tone }: { label: string; tone: "accent" | "default" }) {
+function StatusRailItem({
+  label,
+  value,
+  tone = "default",
+  className = "",
+}: {
+  label: string;
+  value: string;
+  tone?: "accent" | "default";
+  className?: string;
+}) {
   return (
-    <span
-      className={`rounded-full border px-3 py-2 text-xs font-semibold tracking-[0.2em] uppercase ${
-        tone === "accent"
-          ? "border-accent/40 bg-accent/10 text-accent"
-          : "border-outline/80 bg-panel text-muted"
+    <div
+      className={`rounded-xl border px-3 py-2 ${className} ${
+        tone === "accent" ? "border-accent/45 bg-accent/12" : "border-outline/70 bg-panel/72"
       }`}
     >
+      <p className="text-muted text-[0.64rem] font-semibold tracking-[0.2em] uppercase">{label}</p>
+      <p className="text-app-text mt-1 text-sm leading-5 font-semibold break-all">{value}</p>
+    </div>
+  );
+}
+
+function WorkspaceStatus({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "accent" | "default";
+}) {
+  return (
+    <div
+      className={`rounded-[1rem] border px-3 py-3 ${
+        tone === "accent" ? "border-accent/45 bg-accent/12" : "border-outline/70 bg-panel/70"
+      }`}
+    >
+      <p className="text-muted text-[0.66rem] font-semibold tracking-[0.22em] uppercase">{label}</p>
+      <p className="text-app-text mt-2 text-sm leading-5 font-semibold break-all">{value}</p>
+    </div>
+  );
+}
+
+function ActionButton({
+  label,
+  disabled = false,
+  tone,
+  onClick,
+}: {
+  label: string;
+  disabled?: boolean;
+  tone: "primary" | "secondary";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+        tone === "primary"
+          ? "bg-accent text-app-bg hover:brightness-110"
+          : disabled
+            ? "border-outline/70 bg-panel/70 text-muted border"
+            : "border-outline/80 bg-app-bg text-app-text hover:border-accent/50 hover:bg-surface border"
+      }`}
+      onClick={onClick}
+    >
       {label}
-    </span>
+    </button>
   );
 }

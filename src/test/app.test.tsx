@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "@/app/App";
-import { exportWatermarkedImage } from "@/lib/export";
+import {
+  exportWatermarkedImage,
+  exportWatermarkedImageToPath,
+  pickExportFolder,
+} from "@/lib/export";
 
 vi.mock("@/lib/export", async () => {
   const actual = await vi.importActual<typeof import("@/lib/export")>("@/lib/export");
@@ -11,14 +15,20 @@ vi.mock("@/lib/export", async () => {
   return {
     ...actual,
     exportWatermarkedImage: vi.fn(),
+    exportWatermarkedImageToPath: vi.fn(),
+    pickExportFolder: vi.fn(),
   };
 });
 
 const exportWatermarkedImageMock = vi.mocked(exportWatermarkedImage);
+const exportWatermarkedImageToPathMock = vi.mocked(exportWatermarkedImageToPath);
+const pickExportFolderMock = vi.mocked(pickExportFolder);
 
 describe("App shell", () => {
   beforeEach(() => {
     exportWatermarkedImageMock.mockReset();
+    exportWatermarkedImageToPathMock.mockReset();
+    pickExportFolderMock.mockReset();
   });
 
   it("renders the text watermark shell and toggles the theme", async () => {
@@ -27,7 +37,7 @@ describe("App shell", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /image and text watermark editor/i }),
+      screen.getByRole("heading", { name: /portfolio-ready watermark editor/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /watermark session/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /watermark canvas/i })).toBeInTheDocument();
@@ -306,5 +316,129 @@ describe("App shell", () => {
     await user.click(screen.getByRole("button", { name: /export image/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not write to that location/i);
+  });
+
+  it("runs batch export and isolates individual file failures", async () => {
+    const user = userEvent.setup();
+
+    pickExportFolderMock.mockResolvedValue("C:\\Exports");
+    exportWatermarkedImageToPathMock.mockResolvedValueOnce({
+      bytesWritten: 1024,
+      path: "C:\\Exports\\city-watermarked.png",
+    });
+    exportWatermarkedImageToPathMock.mockRejectedValueOnce(
+      new Error("The selected save folder could not be found. Choose another location."),
+    );
+
+    render(<App />);
+
+    const queueInput = screen.getByLabelText(/choose batch image files/i);
+    const cityFile = new File(["image-data"], "city.png", {
+      type: "image/png",
+      lastModified: new Date("2026-04-05T10:20:00Z").getTime(),
+    });
+    const posterFile = new File(["image-data"], "poster.png", {
+      type: "image/png",
+      lastModified: new Date("2026-04-05T10:21:00Z").getTime(),
+    });
+
+    await user.upload(queueInput, [cityFile, posterFile]);
+    await user.click(screen.getByRole("button", { name: /choose output folder/i }));
+    await user.click(screen.getByRole("button", { name: /run batch export/i }));
+
+    await waitFor(() => {
+      expect(exportWatermarkedImageToPathMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(exportWatermarkedImageToPathMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outputPath: "C:\\Exports\\city-watermarked.png",
+      }),
+    );
+    expect(exportWatermarkedImageToPathMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outputPath: "C:\\Exports\\poster-watermarked.png",
+      }),
+    );
+    expect(
+      await screen.findByText(/batch completed\. 1 succeeded, 1 failed\./i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/city-watermarked\.png/i)).toBeInTheDocument();
+    expect(screen.getByText(/selected save folder could not be found/i)).toBeInTheDocument();
+  });
+
+  it("saves, loads, renames, and deletes a custom preset", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const imageInput = screen.getByLabelText(/choose image file/i);
+    const imageFile = new File(["image-data"], "portrait.png", {
+      type: "image/png",
+      lastModified: new Date("2026-04-05T09:30:00Z").getTime(),
+    });
+
+    await user.upload(imageInput, imageFile);
+    await user.clear(screen.getByLabelText(/watermark text/i));
+    await user.type(screen.getByLabelText(/watermark text/i), "Client Draft");
+    await user.type(screen.getByLabelText(/preset name/i), "Client A");
+    await user.click(screen.getByRole("button", { name: /save current preset/i }));
+
+    await user.clear(screen.getByLabelText(/watermark text/i));
+    await user.type(screen.getByLabelText(/watermark text/i), "Temporary");
+    await user.click(screen.getByRole("button", { name: /^load$/i }));
+
+    expect(screen.getByTestId("watermark-overlay")).toHaveTextContent("Client Draft");
+    expect(screen.getByText(/loaded "client a"/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^rename$/i }));
+    const renameInput = screen.getByDisplayValue("Client A");
+    await user.clear(renameInput);
+    await user.type(renameInput, "Client A Final");
+    await user.click(screen.getByRole("button", { name: /save name/i }));
+
+    expect(screen.getByText("Client A Final")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+
+    expect(screen.queryByText("Client A Final")).not.toBeInTheDocument();
+    expect(screen.getByText(/no presets saved yet/i)).toBeInTheDocument();
+  });
+
+  it("restores presets after remount and toggles before or after preview", async () => {
+    const user = userEvent.setup();
+
+    const firstRender = render(<App />);
+
+    const imageInput = screen.getByLabelText(/choose image file/i);
+    const imageFile = new File(["image-data"], "scene.webp", {
+      type: "image/webp",
+      lastModified: new Date("2026-04-05T09:45:00Z").getTime(),
+    });
+
+    await user.upload(imageInput, imageFile);
+    await user.type(screen.getByLabelText(/preset name/i), "Reusable");
+    await user.click(screen.getByRole("button", { name: /save current preset/i }));
+
+    firstRender.unmount();
+    render(<App />);
+
+    expect(screen.getByText("Reusable")).toBeInTheDocument();
+
+    const secondImageInput = screen.getByLabelText(/choose image file/i);
+    await user.upload(secondImageInput, imageFile);
+
+    expect(await screen.findByTestId("watermark-overlay")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /before/i }));
+    expect(screen.queryByTestId("watermark-overlay")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /after/i }));
+    expect(screen.getByTestId("watermark-overlay")).toBeInTheDocument();
+
+    await user.keyboard("b");
+    expect(screen.queryByTestId("watermark-overlay")).not.toBeInTheDocument();
   });
 });

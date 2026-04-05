@@ -23,10 +23,13 @@ type WatermarkCanvasProps = {
   openFilePicker: () => void;
   openLogoPicker: () => void;
   previewStageRef: RefObject<HTMLDivElement | null>;
+  previewMode: "after" | "before";
   selectedFileLabel: string;
   sessionStatus: string;
   watermark: TextWatermarkState;
   watermarkOverlayRef: RefObject<HTMLButtonElement | null>;
+  onBeforePeekEnd: () => void;
+  onBeforePeekStart: () => void;
   onDeleteLogo: () => void;
   onImportChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onImportDragLeave: (event: DragEvent<HTMLElement>) => void;
@@ -37,6 +40,8 @@ type WatermarkCanvasProps = {
   onLogoPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onLogoPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onLogoResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPreviewAfter: () => void;
+  onPreviewBefore: () => void;
   onWatermarkPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onWatermarkPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onWatermarkPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -82,10 +87,13 @@ export function WatermarkCanvas({
   openFilePicker,
   openLogoPicker,
   previewStageRef,
+  previewMode,
   selectedFileLabel,
   sessionStatus,
   watermark,
   watermarkOverlayRef,
+  onBeforePeekEnd,
+  onBeforePeekStart,
   onDeleteLogo,
   onImportChange,
   onImportDragLeave,
@@ -96,11 +104,13 @@ export function WatermarkCanvas({
   onLogoPointerMove,
   onLogoPointerUp,
   onLogoResizePointerDown,
+  onPreviewAfter,
+  onPreviewBefore,
   onWatermarkPointerDown,
   onWatermarkPointerMove,
   onWatermarkPointerUp,
 }: WatermarkCanvasProps) {
-  const hasWatermarkText = watermark.text.trim().length > 0;
+  const hasWatermarkText = previewMode === "after" && watermark.text.trim().length > 0;
   const logoAspectRatio = logo ? resolveAspectRatio(logo) : 1;
   const logoHeight = logoWatermark ? logoWatermark.width / logoAspectRatio : 0;
 
@@ -133,16 +143,18 @@ export function WatermarkCanvas({
               Watermark canvas
             </h2>
             <p className="text-muted max-w-2xl text-sm leading-6">
-              Upload a base image, then position text and a transparent logo watermark directly on
-              the live preview.
+              Upload a base image, then position text and logo overlays directly on the live
+              preview.
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          <StatusPill label="Live preview" tone="accent" />
-          <StatusPill label={formatOpacity(watermark.opacity)} tone="default" />
           <StatusPill
-            label={logoWatermark ? `Logo ${formatOpacity(logoWatermark.opacity)}` : "No logo"}
+            label={previewMode === "after" ? "After view" : "Before view"}
+            tone={previewMode === "after" ? "accent" : "default"}
+          />
+          <StatusPill
+            label={logoWatermark ? `Logo ${formatOpacity(logoWatermark.opacity)}` : "Text only"}
             tone="default"
           />
           <StatusPill
@@ -156,14 +168,13 @@ export function WatermarkCanvas({
         </div>
       </header>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <SummaryStrip label="Watermark text" value={watermark.text || "No text"} />
         <SummaryStrip label="Current file" value={selectedFileLabel} />
         <SummaryStrip label="Text placement" value={formatWatermarkPosition(watermark.position)} />
-        <SummaryStrip label="Logo watermark" value={logo ? logo.file.name : "No logo uploaded"} />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 xl:grid-cols-2">
         <UploadSlot
           description="Choose the main image you want to watermark."
           label="Base image"
@@ -206,18 +217,63 @@ export function WatermarkCanvas({
       >
         <div className="bg-accent/10 absolute inset-x-8 top-6 h-24 rounded-full blur-3xl" />
         <div className="relative flex h-full flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+            <div className="space-y-1">
               <p className="text-app-text text-sm font-semibold">Preview canvas</p>
               <p className="text-muted mt-1 text-sm">
-                Direct manipulation on top of the rendered image, with text snapping and freeform
-                logo resizing that adapt to the current bounds.
+                Drag overlays in After view. Switch to Before view or hold compare to inspect the
+                untouched image.
               </p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <span className="border-outline/80 text-muted rounded-full border px-3 py-1 text-xs tracking-[0.22em] uppercase">
                 {image ? image.formatLabel : "Empty"}
               </span>
+              <div className="border-outline/80 bg-panel/90 inline-flex rounded-full border p-1">
+                <button
+                  type="button"
+                  aria-pressed={previewMode === "before"}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold tracking-[0.16em] uppercase transition ${
+                    previewMode === "before"
+                      ? "bg-app-bg text-app-text"
+                      : "text-muted hover:text-app-text"
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPreviewBefore();
+                  }}
+                >
+                  Before
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={previewMode === "after"}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold tracking-[0.16em] uppercase transition ${
+                    previewMode === "after"
+                      ? "bg-app-bg text-app-text"
+                      : "text-muted hover:text-app-text"
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPreviewAfter();
+                  }}
+                >
+                  After
+                </button>
+              </div>
+              <button
+                type="button"
+                className="border-outline/80 bg-panel/90 text-app-text hover:border-accent/50 hover:bg-surface rounded-full border px-3 py-2 text-xs font-semibold tracking-[0.18em] uppercase transition"
+                onPointerCancel={onBeforePeekEnd}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  onBeforePeekStart();
+                }}
+                onPointerLeave={onBeforePeekEnd}
+                onPointerUp={onBeforePeekEnd}
+              >
+                Hold to compare
+              </button>
               <button
                 type="button"
                 className="border-outline/80 bg-panel/90 text-app-text hover:border-accent/50 hover:bg-surface rounded-full border px-3 py-2 text-xs font-semibold tracking-[0.18em] uppercase transition"
@@ -282,7 +338,7 @@ export function WatermarkCanvas({
                       </button>
                     ) : null}
 
-                    {logo && logoWatermark ? (
+                    {previewMode === "after" && logo && logoWatermark ? (
                       <div
                         data-testid="logo-overlay"
                         className="absolute z-20 touch-none select-none"
@@ -334,6 +390,12 @@ export function WatermarkCanvas({
                         </div>
                       </div>
                     ) : null}
+
+                    {previewMode === "before" ? (
+                      <div className="bg-panel/90 text-app-text pointer-events-none absolute top-3 left-3 rounded-full border border-white/15 px-3 py-1 text-[0.68rem] font-semibold tracking-[0.18em] uppercase shadow-[0_12px_30px_-18px_rgba(15,23,42,0.8)]">
+                        Original image
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -348,9 +410,9 @@ export function WatermarkCanvas({
               <p className="text-muted text-sm leading-6">
                 {image
                   ? logo
-                    ? "Drag the logo to reposition it, resize from any corner handle, and keep PNG transparency intact."
-                    : "Choose a logo watermark to place above the base image, or keep working with text alone."
-                  : "Choose an image first, then use the inspector to add text or a logo watermark."}
+                    ? "Drag the logo, resize from any corner, then tap Before/After or press B for a quick compare."
+                    : "Choose a logo watermark to place above the base image, or keep working with text only."
+                  : "Choose an image first, then add text, logo, and reusable presets from the inspector."}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -412,13 +474,13 @@ function EmptyState({ openFilePicker }: { openFilePicker: () => void }) {
   return (
     <div className="flex max-w-xl flex-col items-center gap-4 text-center">
       <div className="border-outline/80 bg-panel/90 text-app-text flex h-16 w-16 items-center justify-center rounded-full border text-lg font-semibold">
-        LOGO
+        IMG
       </div>
       <div className="space-y-2">
         <h3 className="text-app-text text-2xl font-semibold tracking-tight">Drop an image here</h3>
         <p className="text-muted text-sm leading-6 sm:text-base">
-          Bring in one PNG, JPG, JPEG, or WebP image, then add text and an optional transparent logo
-          watermark from the inspector.
+          Bring in one PNG, JPG, JPEG, or WebP image. Then adjust text, optional logo, and saved
+          presets from the right panel.
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-3">
@@ -435,6 +497,9 @@ function EmptyState({ openFilePicker }: { openFilePicker: () => void }) {
         <span className="border-outline/80 bg-panel/90 text-muted rounded-full border px-3 py-2 text-xs tracking-[0.2em] uppercase">
           One file only
         </span>
+        <span className="border-outline/80 bg-panel/90 text-muted rounded-full border px-3 py-2 text-xs tracking-[0.2em] uppercase">
+          Ctrl/Cmd + O
+        </span>
       </div>
     </div>
   );
@@ -442,9 +507,9 @@ function EmptyState({ openFilePicker }: { openFilePicker: () => void }) {
 
 function SummaryStrip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-outline/70 bg-panel/75 rounded-[1.35rem] border px-4 py-4">
+    <div className="border-outline/70 bg-panel/75 rounded-[1.15rem] border px-4 py-3">
       <p className="text-muted text-xs tracking-[0.2em] uppercase">{label}</p>
-      <p className="text-app-text mt-2 text-sm leading-6 font-semibold">{value}</p>
+      <p className="text-app-text mt-2 text-sm leading-6 font-semibold break-all">{value}</p>
     </div>
   );
 }
@@ -466,7 +531,7 @@ function UploadSlot({
 }) {
   return (
     <section
-      className={`rounded-[1.35rem] border px-4 py-4 ${
+      className={`rounded-[1.2rem] border px-4 py-4 ${
         tone === "accent" ? "border-accent/35 bg-accent/8" : "border-outline/70 bg-panel/75"
       }`}
     >
@@ -494,7 +559,7 @@ function UploadSlot({
 
 function OverlayPill({ label }: { label: string }) {
   return (
-    <span className="border-outline/80 bg-app-bg/90 text-app-text rounded-full border px-3 py-2 text-xs font-semibold tracking-[0.18em] uppercase">
+    <span className="border-outline/80 bg-app-bg/90 text-app-text rounded-full border px-3 py-2 text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
       {label}
     </span>
   );
@@ -503,10 +568,10 @@ function OverlayPill({ label }: { label: string }) {
 function StatusPill({ label, tone }: { label: string; tone: "accent" | "default" }) {
   return (
     <span
-      className={`rounded-full border px-3 py-2 text-xs font-semibold tracking-[0.2em] uppercase ${
+      className={`rounded-full border px-3 py-2 text-[0.68rem] font-semibold tracking-[0.2em] uppercase ${
         tone === "accent"
           ? "border-accent/40 bg-accent/10 text-accent"
-          : "border-outline/80 bg-panel text-muted"
+          : "border-outline/80 bg-panel/80 text-muted"
       }`}
     >
       {label}
