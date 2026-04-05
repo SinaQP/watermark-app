@@ -2,6 +2,7 @@ const ACCEPTED_IMAGE_TYPES = new Map<string, string>([
   ["image/png", "PNG"],
   ["image/jpeg", "JPG"],
   ["image/webp", "WebP"],
+  ["image/svg+xml", "SVG"],
 ]);
 
 const ACCEPTED_EXTENSIONS = new Map<string, string>([
@@ -9,12 +10,13 @@ const ACCEPTED_EXTENSIONS = new Map<string, string>([
   ["jpg", "JPG"],
   ["jpeg", "JPEG"],
   ["webp", "WebP"],
+  ["svg", "SVG"],
 ]);
 
 export const ACCEPTED_IMAGE_INPUT = Array.from(ACCEPTED_IMAGE_TYPES.keys()).join(",");
-export const SUPPORTED_IMAGE_LABEL = "PNG, JPG, JPEG, and WebP";
+export const SUPPORTED_IMAGE_LABEL = "PNG, JPG, JPEG, WebP, and SVG";
 export const MULTIPLE_IMAGE_ERROR =
-  "Upload one image at a time. Choose a single PNG, JPG, or WebP file.";
+  "Upload one image at a time. Choose a single PNG, JPG, JPEG, WebP, or SVG file.";
 
 export type ImportedImage = {
   file: File;
@@ -28,7 +30,7 @@ export function validateImageFile(file: File): string | null {
   const formatLabel = resolveFormatLabel(file);
 
   if (!formatLabel) {
-    return "Unsupported file format. Choose a PNG, JPG, JPEG, or WebP image.";
+    return "Unsupported file format. Choose a PNG, JPG, JPEG, WebP, or SVG image.";
   }
 
   return null;
@@ -56,7 +58,9 @@ export async function createImportedImage(file: File): Promise<ImportedImage> {
   } catch {
     URL.revokeObjectURL(previewUrl);
 
-    throw new Error("This file could not be opened as an image. Choose a PNG, JPG, or WebP file.");
+    throw new Error(
+      "This file could not be opened as an image. Choose a PNG, JPG, JPEG, WebP, or SVG file.",
+    );
   }
 }
 
