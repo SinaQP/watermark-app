@@ -114,12 +114,7 @@ type BatchQueueItem = {
   status: BatchQueueItemView["status"];
 };
 
-const acceptedFormats = [
-  "PNG preserves transparent edges for clean logo marks.",
-  "JPG is practical for base photography and review shots.",
-  "WebP stays lightweight for quick preview iterations.",
-  "SVG works well for vector logos and brand marks.",
-];
+const exportFormatHint = "PNG preserves transparent edges for clean logo marks.";
 
 const workflowNotes = [
   "Upload a base image, then add text and an optional logo watermark.",
@@ -1472,7 +1467,7 @@ export function AppShell() {
                     ))}
                   </div>
                   <p className="tool-subtle rounded-lg border px-2.5 py-2 text-[0.72rem]">
-                    {acceptedFormats[0]}
+                    {exportFormatHint}
                   </p>
                 </SectionCard>
               ) : null}
