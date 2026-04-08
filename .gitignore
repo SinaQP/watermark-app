@@ -7,11 +7,26 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node / frontend artifacts
 node_modules
 dist
 dist-ssr
 coverage
+*.tsbuildinfo
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Tauri / Rust artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Git hooks runtime
 .husky/_/
+
+# Local config files
 *.local
 
 # Editor directories and files
